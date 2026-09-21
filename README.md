@@ -22,20 +22,23 @@ Ultimately, DBScope will provide engineering teams with affected component lists
 
 ---
 
-> **Current implementation: basic SQL migration detection.**
-> *(Day 1 / v0.1 Prototype)*
+> **Current implementation: Migration operation detection (DROP COLUMN, ADD COLUMN, ALTER COLUMN, RENAME COLUMN).**
+> *(Day 2 / v0.2 Prototype)*
 
 ---
 
-## Day 1 Scope
+## Day 2 Scope
 
-The Day 1 prototype implements the initial foundation:
-- Clean, modular Python project structure
-- Interactive CLI entry point (`python -m dbscope`)
-- Migration parser for detecting `DROP COLUMN` DDL operations
-- Structured dictionary output for downstream processing
+The Day 2 prototype extends the migration analyzer:
+- Modular Python project structure and CLI entry point (`python -m dbscope`)
+- Migration parser supporting 4 core DDL operations:
+  1. `DROP COLUMN`
+  2. `ADD COLUMN`
+  3. `ALTER COLUMN`
+  4. `RENAME COLUMN`
+- Structured dictionary output capturing tables, columns, data types, and change clauses
 - Graceful validation for unsupported/invalid SQL
-- Automated unit test suite with `pytest`
+- Comprehensive automated unit test suite with `pytest` (24 passing tests)
 
 ---
 
@@ -77,16 +80,11 @@ Run the DBScope interactive CLI:
 python -m dbscope
 ```
 
-### Example 1: Valid DROP COLUMN Migration
+### Example 1: DROP COLUMN Migration
 
-**Prompt & Input:**
-```text
-========================================
-              DBSCOPE v0.1
-========================================
-
-Enter SQL migration:
-> ALTER TABLE users DROP COLUMN email;
+**Input:**
+```sql
+ALTER TABLE users DROP COLUMN email;
 ```
 
 **Output:**
@@ -100,16 +98,68 @@ Column    : email
 Status    : Change detected
 ```
 
-### Example 2: Unsupported or Invalid Migration
+### Example 2: ADD COLUMN Migration
 
-**Prompt & Input:**
+**Input:**
+```sql
+ALTER TABLE users ADD COLUMN age INTEGER;
+```
+
+**Output:**
 ```text
-========================================
-              DBSCOPE v0.1
-========================================
+----------------------------------------
+MIGRATION ANALYSIS
+----------------------------------------
+Operation : ADD COLUMN
+Table     : users
+Column    : age
+Data Type : INTEGER
+Status    : Change detected
+```
 
-Enter SQL migration:
-> SELECT * FROM users;
+### Example 3: ALTER COLUMN Migration
+
+**Input:**
+```sql
+ALTER TABLE users ALTER COLUMN age TYPE BIGINT;
+```
+
+**Output:**
+```text
+----------------------------------------
+MIGRATION ANALYSIS
+----------------------------------------
+Operation : ALTER COLUMN
+Table     : users
+Column    : age
+New Type  : BIGINT
+Status    : Change detected
+```
+
+### Example 4: RENAME COLUMN Migration
+
+**Input:**
+```sql
+ALTER TABLE users RENAME COLUMN email TO email_address;
+```
+
+**Output:**
+```text
+----------------------------------------
+MIGRATION ANALYSIS
+----------------------------------------
+Operation : RENAME COLUMN
+Table     : users
+Old Column: email
+New Column: email_address
+Status    : Change detected
+```
+
+### Example 5: Unsupported or Invalid Migration
+
+**Input:**
+```sql
+SELECT * FROM users;
 ```
 
 **Output:**
@@ -138,14 +188,14 @@ python -m pytest -v
 dbscope/
 │
 ├── dbscope/
-│   ├── __init__.py               # Package metadata and version definition
+│   ├── __init__.py               # Package metadata and version definition (v0.2.0)
 │   ├── __main__.py               # Module entry point for `python -m dbscope`
 │   ├── cli.py                    # Interactive command line interface & formatting
-│   └── migration_parser.py       # SQL parsing & DROP COLUMN detection
+│   └── migration_parser.py       # SQL parsing for DROP, ADD, ALTER, and RENAME COLUMN
 │
 ├── tests/
 │   ├── __init__.py               # Tests package marker
-│   └── test_migration_parser.py  # Unit test suite for migration parser
+│   └── test_migration_parser.py  # Unit test suite (24 tests)
 │
 ├── README.md                     # Project documentation
 ├── .gitignore                    # Git ignore file for Python and IDEs
@@ -156,8 +206,8 @@ dbscope/
 
 ## Future Development Phases
 
-1. **Phase 2 — Advanced SQL AST Parsing**: Migrate from regex matching to a resilient Abstract Syntax Tree (AST) SQL parser (`sqlglot` or `sqlparse`) supporting multi-statement migrations, `RENAME COLUMN`, `ALTER TYPE`, and Postgres-specific DDL dialects.
-2. **Phase 3 — SQLAlchemy ORM Mapping**: Static AST analysis of SQLAlchemy models to map altered tables/columns to Python model classes and attributes.
-3. **Phase 4 — Pydantic & FastAPI Impact Tracing**: Trace ORM model references into Pydantic request/response schemas and FastAPI route handlers.
-4. **Phase 5 — Vue Frontend Analysis**: Identify affected API clients, Pinia stores, and Vue component templates consuming impacted endpoints.
-5. **Phase 6 — Dependency Graph & Risk Engine**: Construct a NetworkX dependency graph to compute blast radius, assign risk levels, and generate `ALLOW` / `REVIEW` / `BLOCK` guardrails.
+1. **Phase 3 — Advanced SQL AST Parsing**: Transition from regex matching to a resilient Abstract Syntax Tree (AST) parser (`sqlglot` / `sqlparse`) supporting multi-statement migrations and dialect-specific syntax.
+2. **Phase 4 — SQLAlchemy ORM Mapping**: Static AST analysis of SQLAlchemy models to map altered tables/columns to Python model classes and attributes.
+3. **Phase 5 — Pydantic & FastAPI Impact Tracing**: Trace ORM model references into Pydantic request/response schemas and FastAPI route handlers.
+4. **Phase 6 — Vue Frontend Analysis**: Identify affected API clients, Pinia stores, and Vue component templates consuming impacted endpoints.
+5. **Phase 7 — Dependency Graph & Risk Engine**: Construct a NetworkX dependency graph to compute blast radius, assign risk levels, and generate `ALLOW` / `REVIEW` / `BLOCK` guardrails.
