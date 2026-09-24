@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dbscope.api.routes.migration import router as migration_router
 from dbscope.api.routes.metadata import router as metadata_router
 from dbscope.api.routes.dependencies import router as dependencies_router
+from dbscope.api.routes.source import router as source_router
 
 app = FastAPI(
     title="DBScope API",
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(migration_router)
 app.include_router(metadata_router)
 app.include_router(dependencies_router)
+app.include_router(source_router)
 
 
 @app.get("/api/health", tags=["Health"])

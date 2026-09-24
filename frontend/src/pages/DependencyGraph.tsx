@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Info,
 } from 'lucide-react';
+import { dependencyService } from '../services/dependencyService';
 
 interface DependencyNodeData {
   label: string;
@@ -179,10 +180,20 @@ const initialEdges: Edge[] = [
 const GraphCanvas: React.FC<{
   onSelectNode: (node: Node<DependencyNodeData> | null) => void;
   selectedNodeId: string | null;
-}> = ({ onSelectNode, selectedNodeId }) => {
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  loadedNodes: Node<DependencyNodeData>[];
+  loadedEdges: Edge[];
+}> = ({ onSelectNode, selectedNodeId, loadedNodes, loadedEdges }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState(loadedNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(loadedEdges);
   const { fitView, zoomIn, zoomOut, setViewport } = useReactFlow();
+
+  useEffect(() => {
+    setNodes(loadedNodes);
+  }, [loadedNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(loadedEdges);
+  }, [loadedEdges, setEdges]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -205,6 +216,26 @@ const GraphCanvas: React.FC<{
   const handleFit = useCallback(() => {
     fitView({ padding: 0.2 });
   }, [fitView]);
+
+  // Connected dependency highlighting on selection
+  const styledEdges = useMemo(() => {
+    return edges.map((e) => {
+      if (!selectedNodeId) {
+        return {
+          ...e,
+          style: { stroke: '#333A4D', strokeWidth: 1.5 },
+        };
+      }
+
+      const isConnected = e.source === selectedNodeId || e.target === selectedNodeId;
+      return {
+        ...e,
+        style: isConnected
+          ? { stroke: '#3b82f6', strokeWidth: 2.5 }
+          : { stroke: '#1E2330', strokeWidth: 1, opacity: 0.4 },
+      };
+    });
+  }, [edges, selectedNodeId]);
 
   return (
     <div className="relative h-[480px] w-full bg-[#0E1118] border border-[#232733] rounded-lg overflow-hidden">
@@ -252,7 +283,7 @@ const GraphCanvas: React.FC<{
           ...n,
           selected: n.id === selectedNodeId,
         }))}
-        edges={edges}
+        edges={styledEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
@@ -271,9 +302,65 @@ const GraphCanvas: React.FC<{
 
 export const DependencyGraph: React.FC = () => {
   const navigate = useNavigate();
-  const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(
-    initialNodes[3] // Default select User.email
-  );
+  const [currentNodes, setCurrentNodes] = useState<Node<DependencyNodeData>[]>(initialNodes);
+  const [currentEdges, setCurrentEdges] = useState<Edge[]>(initialEdges);
+  const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(initialNodes[3]);
+
+  useEffect(() => {
+    dependencyService.getDependencyGraph('users.email').then((res) => {
+      if (res && res.nodes && res.nodes.length > 0) {
+        const mappedNodes: Node<DependencyNodeData>[] = res.nodes.map((n, idx) => ({
+          id: n.id,
+          type: 'dependencyNode',
+          position: { x: n.x ?? 40 + idx * 220, y: n.y ?? 160 },
+          data: {
+            label: n.label,
+            category:
+              n.category ||
+              (n.type === 'database'
+                ? 'Database'
+                : n.type === 'table'
+                ? 'Table'
+                : n.type === 'column'
+                ? 'Column'
+                : n.type === 'orm_model'
+                ? 'ORM Model'
+                : n.type === 'pydantic_schema'
+                ? 'Pydantic Schema'
+                : 'FastAPI Route'),
+            source: n.source || (n.file ? `${n.file}:${n.line}` : ''),
+            relationship: n.relationship || n.description || '',
+            accentColor:
+              n.accentColor ||
+              (n.type === 'database'
+                ? '#3b82f6'
+                : n.type === 'table'
+                ? '#6366f1'
+                : n.type === 'column'
+                ? '#d97706'
+                : n.type === 'orm_model'
+                ? '#a855f7'
+                : n.type === 'pydantic_schema'
+                ? '#10b981'
+                : '#e11d48'),
+          },
+        }));
+
+        const mappedEdges: Edge[] = res.edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          style: { stroke: '#333A4D', strokeWidth: 1.5 },
+        }));
+
+        setCurrentNodes(mappedNodes);
+        setCurrentEdges(mappedEdges);
+        // Default select the ORM model or column
+        const defaultTarget = mappedNodes.find((n) => n.data.category === 'ORM Model') || mappedNodes[0];
+        setSelectedNode(defaultTarget || null);
+      }
+    });
+  }, []);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -285,7 +372,7 @@ export const DependencyGraph: React.FC = () => {
             <span>Dependency Graph</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Static AST dependency trace mapping database column alterations downstream to application endpoints.
+            Dependency trace combining PostgreSQL schema metadata with application source-code references.
           </p>
         </div>
 
@@ -298,6 +385,31 @@ export const DependencyGraph: React.FC = () => {
         </button>
       </div>
 
+      {/* Node Types Legend */}
+      <div className="flex items-center gap-3 px-3 py-2 rounded bg-[#141720] border border-[#232733] text-[11px] font-mono text-slate-300 flex-wrap">
+        <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px] mr-1">
+          Node Types:
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#3b82f6]"></span> Database
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#6366f1]"></span> Table
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#d97706]"></span> Column
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#a855f7]"></span> ORM Model
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#10b981]"></span> Pydantic Schema
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#e11d48]"></span> FastAPI Route
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Real Interactive Graph Canvas */}
         <div className="lg:col-span-3">
@@ -305,12 +417,14 @@ export const DependencyGraph: React.FC = () => {
             <GraphCanvas
               onSelectNode={setSelectedNode}
               selectedNodeId={selectedNode?.id || null}
+              loadedNodes={currentNodes}
+              loadedEdges={currentEdges}
             />
           </ReactFlowProvider>
 
           <div className="mt-2 p-2.5 bg-[#141720] border border-[#232733] rounded text-[11px] text-slate-500 font-mono flex items-center justify-between">
             <span>Trace Chain: PostgreSQL → Table → Column → ORM Model → Pydantic Schema → FastAPI Route</span>
-            <span className="text-slate-400">Total nodes: 6</span>
+            <span className="text-slate-400">Total nodes: {currentNodes.length}</span>
           </div>
         </div>
 
@@ -336,7 +450,7 @@ export const DependencyGraph: React.FC = () => {
 
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase block">Source</span>
-                  <p className="text-slate-300 mt-0.5 break-all">{selectedNode.data.source}</p>
+                  <p className="text-slate-300 mt-0.5 break-all">{selectedNode.data.source || 'N/A'}</p>
                 </div>
 
                 <div>
@@ -344,6 +458,41 @@ export const DependencyGraph: React.FC = () => {
                   <p className="text-slate-300 mt-0.5 leading-normal">
                     {selectedNode.data.relationship}
                   </p>
+                </div>
+
+                {/* Clear architectural relationship context */}
+                <div className="mt-3 p-2 rounded bg-[#10131B] border border-[#232733] text-[10px] text-slate-400 font-sans leading-relaxed">
+                  {selectedNode.data.category === 'FastAPI Route' && (
+                    <p>
+                      This FastAPI route endpoint declares <code className="text-rose-400 font-mono">{selectedNode.data.relationship}</code>.
+                      Client consumers relying on this HTTP contract are directly affected if upstream schemas change.
+                    </p>
+                  )}
+                  {selectedNode.data.category === 'Pydantic Schema' && (
+                    <p>
+                      Pydantic schema responsible for request/response serialization. Feeds directly into FastAPI route definitions.
+                    </p>
+                  )}
+                  {selectedNode.data.category === 'ORM Model' && (
+                    <p>
+                      SQLAlchemy ORM class mapping physical table attributes into application code objects.
+                    </p>
+                  )}
+                  {selectedNode.data.category === 'Column' && (
+                    <p>
+                      Target database column being modified or dropped in the proposed DDL migration.
+                    </p>
+                  )}
+                  {selectedNode.data.category === 'Table' && (
+                    <p>
+                      Physical PostgreSQL relational table containing the schema definition.
+                    </p>
+                  )}
+                  {selectedNode.data.category === 'Database' && (
+                    <p>
+                      PostgreSQL database host inspected in read-only mode via <code className="text-blue-400 font-mono">information_schema</code>.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

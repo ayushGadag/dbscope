@@ -59,10 +59,14 @@ export interface DependencyNode {
   id: string;
   label: string;
   type: DependencyNodeType;
+  category?: string;
+  source?: string;
+  relationship?: string;
+  accentColor?: string;
   file?: string;
   line?: number;
   description?: string;
-  blastRadius: 'High' | 'Medium' | 'Low' | 'Root';
+  blastRadius?: 'High' | 'Medium' | 'Low' | 'Root';
   x?: number;
   y?: number;
 }
@@ -78,6 +82,42 @@ export interface DependencyGraphData {
   changed_object: string;
   nodes: DependencyNode[];
   edges: DependencyEdge[];
+}
+
+export interface DependencyItem {
+  name: string;
+  type: 'orm_model' | 'pydantic_schema' | 'fastapi_route';
+  file: string;
+  line: number;
+  relationship?: string;
+  description?: string;
+}
+
+export interface UnifiedAnalysisResult {
+  migration: MigrationAnalysis;
+  database_verification: {
+    is_live_db: boolean;
+    table: string;
+    table_exists: boolean;
+    column: string;
+    column_exists: boolean;
+    data_type?: string;
+    status: string;
+    message: string;
+  };
+  application_dependencies: DependencyItem[];
+  potential_impact: {
+    severity: 'High' | 'Medium' | 'Low';
+    summary: string;
+    affected_count: number;
+    updates: {
+      orm_model: string;
+      pydantic_schema: string;
+      fastapi_route: string;
+    };
+  };
+  graph: DependencyGraphData;
+  is_live_db: boolean;
 }
 
 export interface ImpactComponent {

@@ -12,7 +12,6 @@ import {
   FileText,
   Workflow,
   Database,
-  ShieldCheck,
 } from 'lucide-react';
 
 const navigationItems = [
@@ -92,17 +91,6 @@ export const DashboardLayout: React.FC = () => {
             );
           })}
         </nav>
-
-        {/* Safety Note */}
-        <div className="p-3 m-3 rounded bg-[#141720] border border-[#232733] text-[10px] text-slate-400">
-          <div className="flex items-center gap-1.5 text-slate-300 font-semibold mb-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-            <span>Analysis Safety</span>
-          </div>
-          <p className="text-[10px] text-slate-500 leading-normal">
-            Static inspection engine. DBScope never executes SQL migrations or modifies database state.
-          </p>
-        </div>
       </aside>
 
       {/* Main Content Area */}

@@ -29,23 +29,23 @@ export const Architecture: React.FC = () => {
       {/* Ripple Pipeline Flow */}
       <div className="rounded-lg p-5 bg-[#141720] border border-[#232733] space-y-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-          Static Impact Trace Pipeline
+          Dependency / Data Relationship
         </h3>
         <p className="text-xs text-slate-400 leading-relaxed">
-          When a schema modification is proposed, DBScope traverses dependency relationships across each architectural layer:
+          DBScope maps architectural dependencies across database schemas and application code tiers (not runtime execution sequence):
         </p>
 
         <div className="flex items-center justify-between gap-2 p-3.5 rounded bg-[#10131B] border border-[#232733] overflow-x-auto text-xs font-mono">
           <div className="flex items-center gap-2 px-3 py-2 rounded bg-blue-950/40 text-blue-300 border border-blue-800/40 flex-shrink-0">
             <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>PostgreSQL Catalog</span>
+            <span>PostgreSQL Schema</span>
           </div>
 
           <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
 
           <div className="flex items-center gap-2 px-3 py-2 rounded bg-purple-950/40 text-purple-300 border border-purple-800/40 flex-shrink-0">
             <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>SQLAlchemy ORM</span>
+            <span>SQLAlchemy Models</span>
           </div>
 
           <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
@@ -154,7 +154,7 @@ export const Architecture: React.FC = () => {
               <span>Dependency Extraction</span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Static Python AST visitor traversing models, schemas, and routes in-memory to trace ripple dependencies end-to-end.
+              Static Python AST analysis of application models, schemas, and routes to identify references to affected database objects.
             </p>
           </div>
         </div>

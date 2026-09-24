@@ -35,7 +35,7 @@ export const ProjectScanner: React.FC = () => {
     port: 5432,
     database: 'ecommerce_prod',
     username: 'postgres',
-    password: '••••••••••••',
+    password: '',
   });
 
   // Action States
@@ -244,7 +244,7 @@ export const ProjectScanner: React.FC = () => {
             <span className="text-[10px] font-mono uppercase text-slate-500 block mb-2">
               Application Architecture
             </span>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+            <div className="grid grid-cols-3 gap-2 text-xs font-mono">
               <div className="p-2 rounded bg-[#191D28] border border-[#232733]">
                 <span className="text-[10px] text-slate-500 block">Framework:</span>
                 <span className="font-semibold text-slate-200">FastAPI</span>
@@ -252,6 +252,10 @@ export const ProjectScanner: React.FC = () => {
               <div className="p-2 rounded bg-[#191D28] border border-[#232733]">
                 <span className="text-[10px] text-slate-500 block">ORM:</span>
                 <span className="font-semibold text-slate-200">SQLAlchemy</span>
+              </div>
+              <div className="p-2 rounded bg-[#191D28] border border-[#232733]">
+                <span className="text-[10px] text-slate-500 block">Schema / Validation:</span>
+                <span className="font-semibold text-slate-200">Pydantic</span>
               </div>
             </div>
           </div>
@@ -273,7 +277,7 @@ export const ProjectScanner: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-              Read-only schema inspection via <code className="text-slate-300">information_schema</code>. Credentials are encrypted in transit and never logged.
+              Read-only PostgreSQL schema inspection. Credentials are used only for the connection request and are not stored by the frontend.
             </p>
 
             <div className="space-y-2.5">
@@ -322,9 +326,10 @@ export const ProjectScanner: React.FC = () => {
                   <label className="block text-[10px] font-mono text-slate-400 mb-0.5">Password</label>
                   <input
                     type="password"
-                    value={dbConfig.password}
+                    value={dbConfig.password || ''}
+                    placeholder="Enter password"
                     onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
-                    className="w-full bg-[#10131A] border border-[#232733] rounded px-2.5 py-1 text-xs text-slate-200 font-mono"
+                    className="w-full bg-[#10131A] border border-[#232733] rounded px-2.5 py-1 text-xs text-slate-200 font-mono placeholder-slate-600"
                   />
                 </div>
               </div>
