@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileCode2,
@@ -14,6 +14,7 @@ import {
   Info,
 } from 'lucide-react';
 import { migrationService } from '../services/migrationService';
+import { scannerService } from '../services/scannerService';
 import type { UnifiedAnalysisResult } from '../types';
 
 const exampleSnippets = [
@@ -102,13 +103,27 @@ export const AnalyzeChange: React.FC = () => {
     is_live_db: false,
   });
 
-  const handleAnalyze = () => {
+  const handleAnalyze = (targetSql: string = sql) => {
     setAnalyzing(true);
-    migrationService.analyzeUnified(sql).then((res) => {
+    const activeDb = scannerService.getActiveDbConfig();
+    migrationService.analyzeUnified(targetSql, activeDb).then((res) => {
       setUnifiedResult(res);
       setAnalyzing(false);
     });
   };
+
+  useEffect(() => {
+    let ignore = false;
+    const activeDb = scannerService.getActiveDbConfig();
+    migrationService.analyzeUnified(sql, activeDb).then((res) => {
+      if (!ignore) {
+        setUnifiedResult(res);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [sql]);
 
   const migration = unifiedResult?.migration;
   const dbVerif = unifiedResult?.database_verification;
@@ -162,7 +177,7 @@ export const AnalyzeChange: React.FC = () => {
               type="button"
               onClick={() => {
                 setSql(snippet.sql);
-                setUnifiedResult(null);
+                handleAnalyze(snippet.sql);
               }}
               className={`text-[11px] px-2 py-0.5 rounded transition font-mono border ${
                 sql === snippet.sql
@@ -194,7 +209,7 @@ export const AnalyzeChange: React.FC = () => {
 
           <button
             type="button"
-            onClick={handleAnalyze}
+            onClick={() => handleAnalyze()}
             disabled={analyzing || !sql.trim()}
             className="px-3.5 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white transition flex items-center gap-1.5 disabled:opacity-50"
           >
@@ -251,7 +266,7 @@ export const AnalyzeChange: React.FC = () => {
               <div className="p-2.5 rounded bg-[#191D28] border border-[#232733]">
                 <span className="text-[9px] text-slate-500 uppercase block">Data Type</span>
                 <p className="font-semibold text-blue-400 mt-0.5">
-                  {migration.data_type || migration.new_type || migration.clause || 'VARCHAR(255)'}
+                  {migration.data_type || migration.new_type || migration.clause || dbVerif?.data_type || 'VARCHAR(255)'}
                 </p>
               </div>
             </div>

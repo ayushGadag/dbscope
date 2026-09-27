@@ -1,16 +1,28 @@
 import { requestJson } from './api';
 import { mockDependencyGraph } from '../mock/dependencies';
-import type { DependencyGraphData, DependencyItem } from '../types';
+import type { DatabaseConfig, DependencyGraphData, DependencyItem } from '../types';
 
 export const dependencyService = {
   /**
    * Fetch interactive dependency graph nodes & edges.
    * Calls backend POST /api/dependencies/graph with fallback to mock data if offline.
    */
-  async getDependencyGraph(changedObject: string = 'users.email'): Promise<DependencyGraphData> {
+  async getDependencyGraph(
+    changedObject: string = 'users.email',
+    dbConfig?: DatabaseConfig
+  ): Promise<DependencyGraphData> {
+    const payload: Record<string, unknown> = {
+      changed_object: changedObject,
+      host: dbConfig?.host,
+      port: dbConfig?.port,
+      database: dbConfig?.database,
+      username: dbConfig?.username,
+      password: dbConfig?.password && !dbConfig.password.startsWith('•') ? dbConfig.password : undefined,
+    };
+
     const res = await requestJson<DependencyGraphData>('/api/dependencies/graph', {
       method: 'POST',
-      body: JSON.stringify({ changed_object: changedObject }),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok && res.data) {

@@ -19,23 +19,20 @@ export const ProjectScanner: React.FC = () => {
   const [sourceType, setSourceType] = useState<'zip' | 'github'>('zip');
 
   // ZIP Method State
-  const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>({
-    name: 'ecommerce-backend-v2.zip',
-    size: '4.85 MB',
+  const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>(() => {
+    return scannerService.getActiveSource() || {
+      name: 'fastapi-demo.zip',
+      size: '1.58 MB',
+    };
   });
 
   // GitHub Method State
-  const [githubUrl, setGithubUrl] = useState('https://github.com/example/ecommerce-demo');
+  const [githubUrl, setGithubUrl] = useState('https://github.com/Fab-0x/fastapi-demo');
   const [githubStatus, setGithubStatus] = useState<string | null>(null);
 
   // Database Config State
-  const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
-    type: 'PostgreSQL',
-    host: 'localhost',
-    port: 5432,
-    database: 'ecommerce_prod',
-    username: 'postgres',
-    password: '',
+  const [dbConfig, setDbConfig] = useState<DatabaseConfig>(() => {
+    return scannerService.getActiveDbConfig();
   });
 
   // Action States
@@ -55,6 +52,7 @@ export const ProjectScanner: React.FC = () => {
   };
 
   const handleRemoveFile = () => {
+    scannerService.saveActiveSource(null);
     setSelectedFile(null);
   };
 

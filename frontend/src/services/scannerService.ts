@@ -30,12 +30,99 @@ interface GitHubScanResult {
   message?: string;
 }
 
+const DEFAULT_DB_CONFIG: DatabaseConfig = {
+  type: 'PostgreSQL',
+  host: '',
+  port: 5432,
+  database: '',
+  username: '',
+  password: '',
+};
+
+let _sessionDbConfig: DatabaseConfig = { ...DEFAULT_DB_CONFIG };
+
+const DB_CONFIG_KEY = 'dbscope_active_db_config';
+const SOURCE_KEY = 'dbscope_active_source';
+
 export const scannerService = {
+  /**
+   * Get current active database configuration, persisting in session memory.
+   * Security: Database passwords are never retrieved from or stored in localStorage.
+   */
+  getActiveDbConfig(): DatabaseConfig {
+    if (_sessionDbConfig.host || _sessionDbConfig.database) {
+      return { ..._sessionDbConfig };
+    }
+    try {
+      const stored = localStorage.getItem(DB_CONFIG_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          type: 'PostgreSQL',
+          host: parsed.host || '',
+          port: parsed.port || 5432,
+          database: parsed.database || '',
+          username: parsed.username || '',
+          password: _sessionDbConfig.password || '',
+        };
+      }
+    } catch {
+      // localStorage unavailable
+    }
+    return { ...DEFAULT_DB_CONFIG };
+  },
+
+  /**
+   * Save active database configuration for the current session.
+   * Security: The database password is kept strictly in memory for connection requests
+   * and is NEVER written to localStorage.
+   */
+  saveActiveDbConfig(config: DatabaseConfig): void {
+    _sessionDbConfig = { ...config };
+    try {
+      const { password: _, ...safeConfig } = config;
+      localStorage.setItem(DB_CONFIG_KEY, JSON.stringify(safeConfig));
+    } catch {
+      // localStorage unavailable
+    }
+  },
+
+  /**
+   * Get current active application source archive, persisting between pages.
+   */
+  getActiveSource(): { name: string; size: string } | null {
+    try {
+      const stored = localStorage.getItem(SOURCE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {
+      // localStorage unavailable
+    }
+    return null;
+  },
+
+  /**
+   * Save active application source archive info.
+   */
+  saveActiveSource(source: { name: string; size: string } | null): void {
+    try {
+      if (source) {
+        localStorage.setItem(SOURCE_KEY, JSON.stringify(source));
+      } else {
+        localStorage.removeItem(SOURCE_KEY);
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  },
+
   /**
    * Test PostgreSQL connection in strict read-only mode.
    * Calls backend POST /api/metadata/test-connection with clean fallback if offline.
    */
   async testDatabaseConnection(config: DatabaseConfig): Promise<TestConnectionResult> {
+    this.saveActiveDbConfig(config);
     if (!config.host || !config.database) {
       return {
         success: false,
@@ -93,6 +180,7 @@ export const scannerService = {
    * Calls backend POST /api/metadata/inspect.
    */
   async scanDatabaseSchema(config: DatabaseConfig): Promise<ScanDatabaseResult> {
+    this.saveActiveDbConfig(config);
     const payload = {
       host: config.host,
       port: config.port,
@@ -165,6 +253,7 @@ export const scannerService = {
     });
 
     if (res.ok && res.data) {
+      this.saveActiveSource({ name: res.data.filename, size: res.data.size });
       return {
         success: true,
         filename: res.data.filename,

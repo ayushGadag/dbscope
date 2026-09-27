@@ -23,6 +23,7 @@ import {
   Info,
 } from 'lucide-react';
 import { dependencyService } from '../services/dependencyService';
+import { scannerService } from '../services/scannerService';
 
 interface DependencyNodeData {
   label: string;
@@ -307,44 +308,48 @@ export const DependencyGraph: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(initialNodes[3]);
 
   useEffect(() => {
-    dependencyService.getDependencyGraph('users.email').then((res) => {
+    const activeDb = scannerService.getActiveDbConfig();
+    dependencyService.getDependencyGraph('users.email', activeDb).then((res) => {
       if (res && res.nodes && res.nodes.length > 0) {
-        const mappedNodes: Node<DependencyNodeData>[] = res.nodes.map((n, idx) => ({
-          id: n.id,
-          type: 'dependencyNode',
-          position: { x: n.x ?? 40 + idx * 220, y: n.y ?? 160 },
-          data: {
-            label: n.label,
-            category:
-              n.category ||
-              (n.type === 'database'
-                ? 'Database'
-                : n.type === 'table'
-                ? 'Table'
-                : n.type === 'column'
-                ? 'Column'
-                : n.type === 'orm_model'
-                ? 'ORM Model'
-                : n.type === 'pydantic_schema'
-                ? 'Pydantic Schema'
-                : 'FastAPI Route'),
-            source: n.source || (n.file ? `${n.file}:${n.line}` : ''),
-            relationship: n.relationship || n.description || '',
-            accentColor:
-              n.accentColor ||
-              (n.type === 'database'
-                ? '#3b82f6'
-                : n.type === 'table'
-                ? '#6366f1'
-                : n.type === 'column'
-                ? '#d97706'
-                : n.type === 'orm_model'
-                ? '#a855f7'
-                : n.type === 'pydantic_schema'
-                ? '#10b981'
-                : '#e11d48'),
-          },
-        }));
+        const mappedNodes: Node<DependencyNodeData>[] = res.nodes.map((n, idx) => {
+          const typeLower = (n.type || '').toLowerCase();
+          return {
+            id: n.id,
+            type: 'dependencyNode',
+            position: { x: n.x ?? 40 + idx * 220, y: n.y ?? 160 },
+            data: {
+              label: n.label,
+              category:
+                n.category ||
+                (typeLower === 'database'
+                  ? 'Database'
+                  : typeLower === 'table'
+                  ? 'Table'
+                  : typeLower === 'column'
+                  ? 'Column'
+                  : typeLower === 'orm_model'
+                  ? 'ORM Model'
+                  : typeLower === 'pydantic_schema'
+                  ? 'Pydantic Schema'
+                  : 'FastAPI Route'),
+              source: n.source || (n.file ? `${n.file}:${n.line}` : ''),
+              relationship: n.relationship || n.description || '',
+              accentColor:
+                n.accentColor ||
+                (typeLower === 'database'
+                  ? '#3b82f6'
+                  : typeLower === 'table'
+                  ? '#6366f1'
+                  : typeLower === 'column'
+                  ? '#d97706'
+                  : typeLower === 'orm_model'
+                  ? '#a855f7'
+                  : typeLower === 'pydantic_schema'
+                  ? '#10b981'
+                  : '#e11d48'),
+            },
+          };
+        });
 
         const mappedEdges: Edge[] = res.edges.map((e) => ({
           id: e.id,
