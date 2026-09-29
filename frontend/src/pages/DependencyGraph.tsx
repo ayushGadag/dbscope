@@ -1,182 +1,151 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
-  useNodesState,
-  useEdgesState,
   Handle,
   Position,
-  useReactFlow,
-  ReactFlowProvider,
+  useNodesState,
+  useEdgesState,
   Background,
   BackgroundVariant,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
 } from '@xyflow/react';
 import {
-  Network,
   Maximize2,
   RotateCcw,
   ZoomIn,
   ZoomOut,
   ArrowRight,
   Info,
+  Layers,
+  FileCode,
+  Globe,
+  Database,
+  Table as TableIcon,
+  Columns,
+  ShieldAlert,
+  ArrowUpRight
 } from 'lucide-react';
 import { dependencyService } from '../services/dependencyService';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 
-interface DependencyNodeData {
+interface DependencyNodeData extends Record<string, unknown> {
   label: string;
   category: string;
-  source: string;
-  relationship: string;
-  accentColor: string;
-  [key: string]: unknown;
+  source?: string;
+  relationship?: string;
+  accentColor?: string;
 }
 
-// Custom Node Component for Clean Engineering Aesthetic
-const CustomDependencyNode: React.FC<{ data: DependencyNodeData; selected?: boolean }> = ({
+const CustomDependencyNode: React.FC<{
+  data: DependencyNodeData;
+  selected?: boolean;
+}> = ({
   data,
   selected,
 }) => {
+  const getCategoryTheme = () => {
+    switch (data.category) {
+      case 'Database':
+        return {
+          border: 'border-l-sky-500',
+          badgeVariant: 'cyan' as const,
+          icon: <Database className="w-3 h-3 text-sky-600" />,
+        };
+      case 'Table':
+        return {
+          border: 'border-l-blue-500',
+          badgeVariant: 'primary' as const,
+          icon: <TableIcon className="w-3 h-3 text-blue-600" />,
+        };
+      case 'Column':
+        return {
+          border: 'border-l-indigo-500',
+          badgeVariant: 'indigo' as const,
+          icon: <Columns className="w-3 h-3 text-indigo-600" />,
+        };
+      case 'ORM Model':
+        return {
+          border: 'border-l-emerald-500',
+          badgeVariant: 'lime' as const,
+          icon: <Layers className="w-3 h-3 text-emerald-600" />,
+        };
+      case 'Pydantic Schema':
+        return {
+          border: 'border-l-purple-500',
+          badgeVariant: 'purple' as const,
+          icon: <FileCode className="w-3 h-3 text-purple-600" />,
+        };
+      case 'FastAPI Route':
+        return {
+          border: 'border-l-amber-500',
+          badgeVariant: 'warning' as const,
+          icon: <Globe className="w-3 h-3 text-amber-600" />,
+        };
+      default:
+        return {
+          border: 'border-l-slate-400',
+          badgeVariant: 'neutral' as const,
+          icon: <Info className="w-3 h-3 text-slate-500" />,
+        };
+    }
+  };
+
+  const theme = getCategoryTheme();
+
   return (
     <div
-      className={`px-3 py-2.5 rounded bg-[#141720] border min-w-[160px] font-mono shadow-xs transition-colors cursor-grab active:cursor-grabbing ${
+      className={`px-4 py-3 bg-white border border-l-4 rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] transition-all cursor-pointer min-w-[210px] max-w-[240px] select-none ${
+        theme.border
+      } ${
         selected
-          ? 'border-blue-500 ring-1 ring-blue-500/50 bg-[#171C28]'
-          : 'border-[#232733] hover:border-[#384157]'
+          ? 'border-slate-900 ring-2 ring-slate-900/10 shadow-md'
+          : 'border-gray-200/90 hover:border-gray-300'
       }`}
     >
       <Handle
         type="target"
         position={Position.Left}
-        className="w-1.5 h-1.5 !bg-slate-500 border-none"
+        className="w-2.5 h-2.5 !bg-white !border-2 !border-slate-700 rounded-full"
       />
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-slate-400 mb-1">
-        <span>{data.category}</span>
-        <span
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ backgroundColor: data.accentColor }}
-        ></span>
+
+      <div className="flex items-center justify-between gap-1 mb-1.5">
+        <Badge variant={theme.badgeVariant} size="xs">
+          <span className="flex items-center gap-1">
+            {theme.icon}
+            <span>{data.category}</span>
+          </span>
+        </Badge>
       </div>
-      <div className="text-xs font-semibold text-slate-100 truncate">{data.label}</div>
-      <div className="text-[10px] text-slate-400 mt-1 truncate">{data.source}</div>
+
+      <div
+        className="text-xs font-mono font-semibold text-slate-900 truncate"
+        title={data.label}
+      >
+        {data.label}
+      </div>
+
+      <div
+        className="text-[11px] font-mono text-slate-500 truncate mt-1 bg-gray-50 px-2 py-0.5 rounded border border-gray-200/70"
+        title={data.source}
+      >
+        {data.source || 'schema_definition'}
+      </div>
+
       <Handle
         type="source"
         position={Position.Right}
-        className="w-1.5 h-1.5 !bg-slate-500 border-none"
+        className="w-2.5 h-2.5 !bg-white !border-2 !border-slate-700 rounded-full"
       />
     </div>
   );
 };
 
-const initialNodes: Node<DependencyNodeData>[] = [
-  {
-    id: 'node-db',
-    type: 'dependencyNode',
-    position: { x: 40, y: 160 },
-    data: {
-      label: 'PostgreSQL',
-      category: 'Database',
-      source: 'Catalog: information_schema',
-      relationship: 'Root database catalog',
-      accentColor: '#3b82f6',
-    },
-  },
-  {
-    id: 'node-table',
-    type: 'dependencyNode',
-    position: { x: 260, y: 160 },
-    data: {
-      label: 'users',
-      category: 'Table',
-      source: 'public.users',
-      relationship: 'Contains table schema',
-      accentColor: '#6366f1',
-    },
-  },
-  {
-    id: 'node-col',
-    type: 'dependencyNode',
-    position: { x: 480, y: 160 },
-    data: {
-      label: 'users.email',
-      category: 'Column',
-      source: 'VARCHAR(255), Nullable',
-      relationship: 'Target column being removed',
-      accentColor: '#d97706',
-    },
-  },
-  {
-    id: 'node-orm',
-    type: 'dependencyNode',
-    position: { x: 700, y: 160 },
-    data: {
-      label: 'User.email',
-      category: 'ORM Model',
-      source: 'models.py:17',
-      relationship: 'Maps to users.email column',
-      accentColor: '#a855f7',
-    },
-  },
-  {
-    id: 'node-schema',
-    type: 'dependencyNode',
-    position: { x: 920, y: 160 },
-    data: {
-      label: 'UserResponse.email',
-      category: 'Pydantic Schema',
-      source: 'schemas.py:12',
-      relationship: 'Serializes User.email attribute',
-      accentColor: '#10b981',
-    },
-  },
-  {
-    id: 'node-route',
-    type: 'dependencyNode',
-    position: { x: 1140, y: 160 },
-    data: {
-      label: 'GET /users/{id}',
-      category: 'FastAPI Route',
-      source: 'routes.py:12',
-      relationship: 'Declares response_model=UserResponse',
-      accentColor: '#e11d48',
-    },
-  },
-];
-
-const initialEdges: Edge[] = [
-  {
-    id: 'e-db-table',
-    source: 'node-db',
-    target: 'node-table',
-    style: { stroke: '#333A4D', strokeWidth: 1.5 },
-  },
-  {
-    id: 'e-table-col',
-    source: 'node-table',
-    target: 'node-col',
-    style: { stroke: '#333A4D', strokeWidth: 1.5 },
-  },
-  {
-    id: 'e-col-orm',
-    source: 'node-col',
-    target: 'node-orm',
-    style: { stroke: '#333A4D', strokeWidth: 1.5 },
-  },
-  {
-    id: 'e-orm-schema',
-    source: 'node-orm',
-    target: 'node-schema',
-    style: { stroke: '#333A4D', strokeWidth: 1.5 },
-  },
-  {
-    id: 'e-schema-route',
-    source: 'node-schema',
-    target: 'node-route',
-    style: { stroke: '#333A4D', strokeWidth: 1.5 },
-  },
-];
-
+// Canvas wrapper
 const GraphCanvas: React.FC<{
   onSelectNode: (node: Node<DependencyNodeData> | null) => void;
   selectedNodeId: string | null;
@@ -185,7 +154,9 @@ const GraphCanvas: React.FC<{
 }> = ({ onSelectNode, selectedNodeId, loadedNodes, loadedEdges }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState(loadedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(loadedEdges);
-  const { fitView, zoomIn, zoomOut, setViewport } = useReactFlow();
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
+
+  const nodeTypes = useMemo(() => ({ dependencyNode: CustomDependencyNode }), []);
 
   useEffect(() => {
     setNodes(loadedNodes);
@@ -195,87 +166,87 @@ const GraphCanvas: React.FC<{
     setEdges(loadedEdges);
   }, [loadedEdges, setEdges]);
 
-  const nodeTypes = useMemo(
-    () => ({
-      dependencyNode: CustomDependencyNode,
-    }),
-    []
-  );
-
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      onSelectNode(node as Node<DependencyNodeData>);
+      onSelectNode(node as unknown as Node<DependencyNodeData>);
     },
     [onSelectNode]
   );
 
-  const handleReset = useCallback(() => {
-    setViewport({ x: 0, y: 0, zoom: 0.95 });
-  }, [setViewport]);
-
   const handleFit = useCallback(() => {
-    fitView({ padding: 0.2 });
+    fitView({ padding: 0.2, duration: 300 });
   }, [fitView]);
 
-  // Connected dependency highlighting on selection
-  const styledEdges = useMemo(() => {
-    return edges.map((e) => {
-      if (!selectedNodeId) {
-        return {
-          ...e,
-          style: { stroke: '#333A4D', strokeWidth: 1.5 },
-        };
-      }
+  const handleReset = useCallback(() => {
+    fitView({ padding: 0.2, duration: 300 });
+  }, [fitView]);
 
-      const isConnected = e.source === selectedNodeId || e.target === selectedNodeId;
-      return {
-        ...e,
-        style: isConnected
-          ? { stroke: '#3b82f6', strokeWidth: 2.5 }
-          : { stroke: '#1E2330', strokeWidth: 1, opacity: 0.4 },
-      };
-    });
-  }, [edges, selectedNodeId]);
+  const styledEdges = useMemo(() => {
+    return edges.map((e) => ({
+      ...e,
+      animated: true,
+      style: {
+        stroke: '#64748b',
+        strokeWidth: 1.5,
+      },
+    }));
+  }, [edges]);
 
   return (
-    <div className="relative h-[480px] w-full bg-[#0E1118] border border-[#232733] rounded-lg overflow-hidden">
-      {/* Graph Toolbar Controls */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-[#141720] p-1 rounded border border-[#232733]">
+    <div className="relative w-full h-[580px] bg-[#f8f9fa] border border-gray-200/90 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
+      {/* Top Left Toolbar */}
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-lg shadow-sm">
         <button
           onClick={handleFit}
-          className="px-2 py-1 rounded hover:bg-[#1C212E] text-slate-300 text-[11px] font-mono flex items-center gap-1 transition-colors"
-          title="Fit View"
+          className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+          title="Fit to Screen"
         >
-          <Maximize2 className="w-3 h-3" />
+          <Maximize2 className="w-3.5 h-3.5" />
           <span>Fit</span>
         </button>
         <button
           onClick={handleReset}
-          className="px-2 py-1 rounded hover:bg-[#1C212E] text-slate-300 text-[11px] font-mono flex items-center gap-1 transition-colors"
+          className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
           title="Reset View"
         >
-          <RotateCcw className="w-3 h-3" />
+          <RotateCcw className="w-3.5 h-3.5" />
           <span>Reset</span>
         </button>
-        <span className="w-px h-3.5 bg-[#232733] mx-0.5"></span>
+        <span className="w-px h-4 bg-gray-200 mx-0.5" />
         <button
           onClick={() => zoomIn()}
-          className="p-1.5 rounded hover:bg-[#1C212E] text-slate-300 transition-colors"
-          title="Zoom In"
+          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-gray-50 rounded-md transition-colors cursor-pointer"
+          title="Zoom in"
         >
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => zoomOut()}
-          className="p-1.5 rounded hover:bg-[#1C212E] text-slate-300 transition-colors"
-          title="Zoom Out"
+          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-gray-50 rounded-md transition-colors cursor-pointer"
+          title="Zoom out"
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="absolute top-3 right-3 z-10 text-[10px] font-mono text-slate-400 bg-[#141720] px-2.5 py-1 rounded border border-[#232733]">
-        Drag nodes freely • Edges follow nodes
+      {/* Legend Top Right */}
+      <div className="hidden sm:flex absolute top-3 right-3 z-10 items-center gap-3 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm text-[11px] text-slate-600">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-sky-500" />
+          <span>Database</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span>ORM</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-purple-500" />
+          <span>Schema</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span>Route</span>
+        </div>
       </div>
 
       <ReactFlow
@@ -290,11 +261,10 @@ const GraphCanvas: React.FC<{
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.4}
-        maxZoom={1.8}
-        proOptions={{ hideAttribution: true }}
+        minZoom={0.2}
+        maxZoom={1.5}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#1E2330" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#cbd5e1" />
       </ReactFlow>
     </div>
   );
@@ -302,17 +272,17 @@ const GraphCanvas: React.FC<{
 
 export const DependencyGraph: React.FC = () => {
   const navigate = useNavigate();
-  const [currentNodes, setCurrentNodes] = useState<Node<DependencyNodeData>[]>(initialNodes);
-  const [currentEdges, setCurrentEdges] = useState<Edge[]>(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(initialNodes[3]);
+  const [currentNodes, setCurrentNodes] = useState<Node<DependencyNodeData>[]>([]);
+  const [currentEdges, setCurrentEdges] = useState<Edge[]>([]);
+  const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(null);
 
   useEffect(() => {
     dependencyService.getDependencyGraph('users.email').then((res) => {
-      if (res && res.nodes && res.nodes.length > 0) {
+      if (res && res.nodes) {
         const mappedNodes: Node<DependencyNodeData>[] = res.nodes.map((n, idx) => ({
           id: n.id,
           type: 'dependencyNode',
-          position: { x: n.x ?? 40 + idx * 220, y: n.y ?? 160 },
+          position: { x: n.x ?? 40 + idx * 240, y: n.y ?? 200 },
           data: {
             label: n.label,
             category:
@@ -330,19 +300,7 @@ export const DependencyGraph: React.FC = () => {
                 : 'FastAPI Route'),
             source: n.source || (n.file ? `${n.file}:${n.line}` : ''),
             relationship: n.relationship || n.description || '',
-            accentColor:
-              n.accentColor ||
-              (n.type === 'database'
-                ? '#3b82f6'
-                : n.type === 'table'
-                ? '#6366f1'
-                : n.type === 'column'
-                ? '#d97706'
-                : n.type === 'orm_model'
-                ? '#a855f7'
-                : n.type === 'pydantic_schema'
-                ? '#10b981'
-                : '#e11d48'),
+            accentColor: '#0ea5e9',
           },
         }));
 
@@ -350,69 +308,41 @@ export const DependencyGraph: React.FC = () => {
           id: e.id,
           source: e.source,
           target: e.target,
-          style: { stroke: '#333A4D', strokeWidth: 1.5 },
+          style: { stroke: '#64748b', strokeWidth: 1.5 },
         }));
 
         setCurrentNodes(mappedNodes);
         setCurrentEdges(mappedEdges);
-        // Default select the ORM model or column
-        const defaultTarget = mappedNodes.find((n) => n.data.category === 'ORM Model') || mappedNodes[0];
+        const defaultTarget =
+          mappedNodes.find((n) => n.data.category === 'ORM Model') || mappedNodes[0];
         setSelectedNode(defaultTarget || null);
       }
     });
   }, []);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-            <Network className="w-4 h-4 text-blue-400" />
-            <span>Dependency Graph</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Dependency trace combining PostgreSQL schema metadata with application source-code references.
-          </p>
+    <div className="space-y-6">
+      {/* Graph Action Toolbar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-700">Lineage Focus:</span>
+          <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
+            users.email
+          </span>
         </div>
-
-        <button
+        <Button
+          variant="primary"
+          size="sm"
+          rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
           onClick={() => navigate('/impact')}
-          className="px-3 py-1.5 bg-[#191D28] hover:bg-[#202534] text-xs font-medium text-slate-300 border border-[#2B3142] rounded transition flex items-center gap-1.5 self-start md:self-auto"
         >
-          <span>View Impact Table</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+          View Impact Matrix
+        </Button>
       </div>
 
-      {/* Node Types Legend */}
-      <div className="flex items-center gap-3 px-3 py-2 rounded bg-[#141720] border border-[#232733] text-[11px] font-mono text-slate-300 flex-wrap">
-        <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px] mr-1">
-          Node Types:
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#3b82f6]"></span> Database
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#6366f1]"></span> Table
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#d97706]"></span> Column
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#a855f7]"></span> ORM Model
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#10b981]"></span> Pydantic Schema
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#e11d48]"></span> FastAPI Route
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Real Interactive Graph Canvas */}
-        <div className="lg:col-span-3">
+      {/* Main Graph Grid (9 cols canvas, 3 cols inspector) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+        <div className="xl:col-span-9">
           <ReactFlowProvider>
             <GraphCanvas
               onSelectNode={setSelectedNode}
@@ -421,96 +351,86 @@ export const DependencyGraph: React.FC = () => {
               loadedEdges={currentEdges}
             />
           </ReactFlowProvider>
-
-          <div className="mt-2 p-2.5 bg-[#141720] border border-[#232733] rounded text-[11px] text-slate-500 font-mono flex items-center justify-between">
-            <span>Trace Chain: PostgreSQL → Table → Column → ORM Model → Pydantic Schema → FastAPI Route</span>
-            <span className="text-slate-400">Total nodes: {currentNodes.length}</span>
-          </div>
         </div>
 
-        {/* Selected Node Details Panel */}
-        <div className="rounded-lg p-4 bg-[#141720] border border-[#232733] flex flex-col justify-between">
-          {selectedNode ? (
-            <div className="space-y-3 font-mono text-xs">
-              <div className="pb-2.5 border-b border-[#232733]">
-                <span className="text-[10px] text-slate-500 uppercase block">Node Details</span>
-                <h3 className="text-sm font-semibold text-white mt-1 break-all">
-                  {selectedNode.data.label}
-                </h3>
-                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.2 rounded bg-[#191D28] text-slate-300 border border-[#2B3142]">
-                  {selectedNode.data.category}
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase block">Type</span>
-                  <p className="text-slate-200 mt-0.5">{selectedNode.data.category}</p>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase block">Source</span>
-                  <p className="text-slate-300 mt-0.5 break-all">{selectedNode.data.source || 'N/A'}</p>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase block">Relationship</span>
-                  <p className="text-slate-300 mt-0.5 leading-normal">
-                    {selectedNode.data.relationship}
-                  </p>
-                </div>
-
-                {/* Clear architectural relationship context */}
-                <div className="mt-3 p-2 rounded bg-[#10131B] border border-[#232733] text-[10px] text-slate-400 font-sans leading-relaxed">
-                  {selectedNode.data.category === 'FastAPI Route' && (
-                    <p>
-                      This FastAPI route endpoint declares <code className="text-rose-400 font-mono">{selectedNode.data.relationship}</code>.
-                      Client consumers relying on this HTTP contract are directly affected if upstream schemas change.
-                    </p>
-                  )}
-                  {selectedNode.data.category === 'Pydantic Schema' && (
-                    <p>
-                      Pydantic schema responsible for request/response serialization. Feeds directly into FastAPI route definitions.
-                    </p>
-                  )}
-                  {selectedNode.data.category === 'ORM Model' && (
-                    <p>
-                      SQLAlchemy ORM class mapping physical table attributes into application code objects.
-                    </p>
-                  )}
-                  {selectedNode.data.category === 'Column' && (
-                    <p>
-                      Target database column being modified or dropped in the proposed DDL migration.
-                    </p>
-                  )}
-                  {selectedNode.data.category === 'Table' && (
-                    <p>
-                      Physical PostgreSQL relational table containing the schema definition.
-                    </p>
-                  )}
-                  {selectedNode.data.category === 'Database' && (
-                    <p>
-                      PostgreSQL database host inspected in read-only mode via <code className="text-blue-400 font-mono">information_schema</code>.
-                    </p>
-                  )}
-                </div>
-              </div>
+        {/* Node Inspector Panel */}
+        <div className="xl:col-span-3">
+          <div className="bg-white rounded-xl border border-gray-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col h-full overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50/50">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5 font-mono">
+                Node Inspector
+              </span>
+              <h3 className="text-sm font-semibold font-mono text-slate-900 truncate">
+                {selectedNode ? selectedNode.data.label : 'Select a node'}
+              </h3>
             </div>
-          ) : (
-            <div className="text-center py-10 text-slate-500 text-xs">
-              <Info className="w-6 h-6 mx-auto mb-2 text-slate-600" />
-              <span>Click a node to inspect metadata.</span>
-            </div>
-          )}
 
-          <div className="pt-3 border-t border-[#232733] mt-4">
-            <button
-              onClick={() => navigate('/impact')}
-              className="w-full py-1.5 px-3 rounded bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white transition flex items-center justify-center gap-1.5"
-            >
-              <span>Impact Matrix</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto text-xs text-slate-700">
+              {selectedNode ? (
+                <>
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
+                      Architecture Tier
+                    </span>
+                    <span className="inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-slate-700 border border-gray-200">
+                      {selectedNode.data.category}
+                    </span>
+                  </div>
+
+                  {selectedNode.data.source && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
+                        Source Location
+                      </span>
+                      <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200/80 font-mono text-slate-800 text-xs">
+                        {selectedNode.data.source}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedNode.data.relationship && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
+                        Dependency Binding
+                      </span>
+                      <p className="text-slate-600 leading-relaxed text-xs">
+                        {selectedNode.data.relationship}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 space-y-1 text-xs">
+                    <div className="flex items-center gap-1.5 font-semibold text-amber-900">
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Impact Notice</span>
+                    </div>
+                    <p className="text-amber-800 text-[11px] leading-relaxed">
+                      {selectedNode.data.category === 'FastAPI Route'
+                        ? 'Public contract broken. Response serialization fails with missing attribute.'
+                        : selectedNode.data.category === 'ORM Model'
+                        ? 'SQLAlchemy column binding. Querying User.email will throw OperationalError.'
+                        : 'Downstream references depend on this schema catalog definition.'}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="py-12 text-center text-slate-400">
+                  Click on any node in the canvas to inspect its source code references and binding mechanisms.
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50/50 border-t border-gray-100">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/impact')}
+                className="w-full"
+                rightIcon={<ArrowUpRight className="w-3.5 h-3.5" />}
+              >
+                View in Impact Matrix
+              </Button>
+            </div>
           </div>
         </div>
       </div>

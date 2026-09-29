@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent and test tooling artifacts
+.agents/
+.playwright/
+.playwright-cli/
+awesome-design/

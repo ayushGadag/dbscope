@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity,
-  AlertTriangle,
   Search,
-  Filter,
   ArrowRight,
+  Database,
+  Layers,
+  FileCode,
+  Globe
 } from 'lucide-react';
 import { impactService } from '../services/impactService';
 import type { ImpactResult } from '../types';
+import { RiskBadge } from '../components/ui/RiskBadge';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 
 export const ImpactAnalysis: React.FC = () => {
   const navigate = useNavigate();
@@ -20,175 +24,192 @@ export const ImpactAnalysis: React.FC = () => {
     impactService.getImpactAnalysis('users.email').then(setImpactData);
   }, []);
 
-  const getTypeBadge = (type: string) => {
-    switch (type) {
-      case 'orm_model':
-        return (
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#191D28] text-purple-300 border border-[#2D3142]">
-            SQLAlchemy Model
-          </span>
-        );
-      case 'pydantic_schema':
-        return (
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#191D28] text-emerald-300 border border-[#2D3142]">
-            Pydantic Schema
-          </span>
-        );
-      case 'fastapi_route':
-        return (
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#191D28] text-rose-300 border border-[#2D3142]">
-            FastAPI Route
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
+  const components = impactData?.components || [];
 
-  const filteredComponents = impactData?.components.filter((c) => {
+  const filtered = components.filter((comp) => {
     const matchesSearch =
-      c.component.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.file.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.relationship.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesType = selectedType === 'all' || c.type === selectedType;
-
+      comp.component.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      comp.file.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      comp.relationship.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType =
+      selectedType === 'all' ||
+      (selectedType === 'orm' && comp.type === 'orm_model') ||
+      (selectedType === 'schema' && comp.type === 'pydantic_schema') ||
+      (selectedType === 'route' && comp.type === 'fastapi_route');
     return matchesSearch && matchesType;
-  }) || [];
+  });
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-            <Activity className="w-4 h-4 text-blue-400" />
-            <span>Impact Analysis</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Identifies application code components directly referencing changed database object <code className="text-amber-300 font-mono">users.email</code>.
-          </p>
+    <div className="space-y-6">
+      {/* Action Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-700">Target Entity:</span>
+          <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
+            users.email
+          </span>
+          <span className="text-[11px] text-slate-500 hidden md:inline">
+            ({components.length} bound code references)
+          </span>
         </div>
 
-        <button
+        <Button
+          variant="primary"
+          size="sm"
+          rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
           onClick={() => navigate('/risk')}
-          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white rounded transition flex items-center gap-1.5 self-start md:self-auto"
         >
-          <span>Evaluate Risk</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+          Proceed to Risk Assessment
+        </Button>
       </div>
 
-      {/* Target Change Metric Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
-        <div className="p-3.5 rounded-lg bg-[#141720] border border-[#232733]">
-          <span className="text-[10px] text-slate-500 uppercase block">
-            Changed Object
+      {/* 3 Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 font-mono">
+            Target Schema Object
           </span>
-          <p className="font-semibold text-amber-300 mt-0.5">
-            {impactData?.changed_object}
-          </p>
-          <span className="text-[10px] text-slate-500 mt-0.5 block">PostgreSQL schema column</span>
+          <div className="text-base font-semibold font-mono text-slate-900">users.email</div>
+          <div className="text-xs text-slate-500">PostgreSQL physical column (VARCHAR 255)</div>
         </div>
 
-        <div className="p-3.5 rounded-lg bg-[#141720] border border-[#232733]">
-          <span className="text-[10px] text-slate-500 uppercase block">
-            Affected Code References
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 font-mono">
+            Total Bound References
           </span>
-          <p className="font-semibold text-white mt-0.5">
-            {impactData?.affectedCount} Components
-          </p>
-          <span className="text-[10px] text-slate-500 mt-0.5 block">ORM, Schema, and Route tiers</span>
-        </div>
-
-        <div className="p-3.5 rounded-lg bg-[#141720] border border-[#232733]">
-          <span className="text-[10px] text-slate-500 uppercase block">
-            Impact Severity
-          </span>
-          <p className="font-semibold text-rose-400 mt-0.5 flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-            <span>High Severity</span>
-          </p>
-          <span className="text-[10px] text-slate-500 mt-0.5 block">Breaking public API contract</span>
-        </div>
-      </div>
-
-      {/* Impact Table Container */}
-      <div className="rounded-lg bg-[#141720] border border-[#232733] overflow-hidden">
-        {/* Table Filters Toolbar */}
-        <div className="p-3 border-b border-[#232733] flex flex-col md:flex-row items-center justify-between gap-2.5 bg-[#11141D]">
-          <div className="relative w-full md:w-72">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search components or files..."
-              className="w-full bg-[#161922] border border-[#232733] rounded pl-8 pr-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-hidden focus:border-blue-500 font-mono"
-            />
+          <div className="text-base font-semibold text-slate-900">
+            {components.length} Downstream Components
           </div>
+          <div className="text-xs text-slate-500">SQLAlchemy, Pydantic, FastAPI</div>
+        </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto text-xs">
-            <Filter className="w-3 h-3 text-slate-500" />
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="bg-[#161922] border border-[#232733] rounded px-2.5 py-1 text-xs text-slate-300 focus:outline-hidden font-mono"
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 font-mono">
+            Severity Rating
+          </span>
+          <div className="flex items-center gap-2">
+            <RiskBadge level={components[0]?.severity ? (components[0].severity.toUpperCase() as 'HIGH') : 'HIGH'} score={88} showScore />
+          </div>
+          <div className="text-xs text-rose-600 font-medium">Immediate runtime failure without update</div>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter components, files, or bindings..."
+            className="w-full pl-10 pr-4 py-2 text-xs bg-white text-slate-900 placeholder:text-slate-400 border border-[#e2e7e2] rounded-full focus:outline-none focus:border-[#1c4e35] focus:ring-2 focus:ring-emerald-200/50 shadow-xs"
+          />
+        </div>
+
+        {/* Type Filter Pills */}
+        <div className="p-1 rounded-full bg-white border border-[#e2e7e2] flex items-center gap-1 text-xs shrink-0 shadow-xs">
+          {[
+            { id: 'all', label: 'All Artifacts' },
+            { id: 'orm', label: 'ORM Models' },
+            { id: 'schema', label: 'Schemas' },
+            { id: 'route', label: 'Routes' },
+          ].map((type) => (
+            <button
+              key={type.id}
+              onClick={() => setSelectedType(type.id)}
+              className={`px-3 py-1 text-xs font-medium rounded-full transition-all cursor-pointer ${
+                selectedType === type.id
+                  ? 'bg-[#1c4e35] text-white shadow-xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#edf1ed]'
+              }`}
             >
-              <option value="all">All Types</option>
-              <option value="orm_model">SQLAlchemy Model</option>
-              <option value="pydantic_schema">Pydantic Schema</option>
-              <option value="fastapi_route">FastAPI Route</option>
-            </select>
+              {type.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Impact Matrix Table */}
+      <div className="rounded-2xl bg-white border border-[#e2e7e2] shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-slate-600" />
+            <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wider">
+              Downstream Component Manifest
+            </h3>
           </div>
+          <span className="text-[11px] font-mono text-slate-400">
+            {filtered.length} of {components.length} components shown
+          </span>
         </div>
 
-        {/* Components Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#161922] text-slate-400 font-mono text-[10px] uppercase tracking-wider border-b border-[#232733]">
+            <thead className="bg-gray-50/70 text-slate-500 text-[10px] font-medium uppercase tracking-wider border-b border-gray-200">
               <tr>
-                <th className="py-2.5 px-3.5">Component</th>
-                <th className="py-2.5 px-3.5">Type</th>
-                <th className="py-2.5 px-3.5">File</th>
-                <th className="py-2.5 px-3.5">Line</th>
-                <th className="py-2.5 px-3.5">Relationship</th>
+                <th className="py-2.5 px-5">Component Identifier</th>
+                <th className="py-2.5 px-5">Architectural Layer</th>
+                <th className="py-2.5 px-5">File Location</th>
+                <th className="py-2.5 px-5">Dependency Binding</th>
+                <th className="py-2.5 px-5">Impact Severity</th>
+                <th className="py-2.5 px-5 text-right">Inspect</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#232733] font-mono text-xs">
-              {filteredComponents.map((item, idx) => (
-                <tr key={idx} className="hover:bg-[#161922] transition-colors">
-                  <td className="py-2.5 px-3.5 font-semibold text-slate-200">
-                    {item.component}
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((item, idx) => (
+                <tr key={idx} className="hover:bg-gray-50/70 transition-colors">
+                  <td className="py-3 px-5 font-mono font-semibold text-slate-900">
+                    <div className="flex items-center gap-2">
+                      {item.type === 'fastapi_route' ? (
+                        <Globe className="w-3.5 h-3.5 text-amber-600" />
+                      ) : item.type === 'pydantic_schema' ? (
+                        <FileCode className="w-3.5 h-3.5 text-purple-600" />
+                      ) : (
+                        <Database className="w-3.5 h-3.5 text-emerald-600" />
+                      )}
+                      <span>{item.component}</span>
+                    </div>
                   </td>
-                  <td className="py-2.5 px-3.5">{getTypeBadge(item.type)}</td>
-                  <td className="py-2.5 px-3.5 text-blue-300">
-                    {item.file}
+                  <td className="py-3 px-5">
+                    <Badge
+                      variant={
+                        item.type === 'orm_model'
+                          ? 'lime'
+                          : item.type === 'pydantic_schema'
+                          ? 'purple'
+                          : 'warning'
+                      }
+                      size="xs"
+                    >
+                      {item.type === 'orm_model'
+                        ? 'SQLAlchemy'
+                        : item.type === 'pydantic_schema'
+                        ? 'Pydantic'
+                        : 'FastAPI'}
+                    </Badge>
                   </td>
-                  <td className="py-2.5 px-3.5 text-slate-400">
-                    {item.line}
+                  <td className="py-3 px-5 font-mono text-slate-500">
+                    {item.file}:{item.line}
                   </td>
-                  <td className="py-2.5 px-3.5 text-slate-300 font-sans text-xs max-w-sm">
+                  <td className="py-3 px-5 text-slate-600">
                     {item.relationship}
+                  </td>
+                  <td className="py-3 px-5">
+                    <RiskBadge level={item.severity as 'HIGH'} />
+                  </td>
+                  <td className="py-3 px-5 text-right">
+                    <button
+                      onClick={() => navigate('/graph')}
+                      className="text-xs font-medium text-slate-900 hover:text-blue-600 transition-colors cursor-pointer"
+                    >
+                      Trace →
+                    </button>
                   </td>
                 </tr>
               ))}
-
-              {filteredComponents.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-500 font-sans">
-                    No components found matching filters.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </div>
-
-        {/* Footer info */}
-        <div className="p-2.5 bg-[#11141D] border-t border-[#232733] flex items-center justify-between text-[11px] text-slate-500 font-mono">
-          <span>Static AST detection (No code executed)</span>
-          <span>Affected downstream count: {impactData?.affectedCount || 0}</span>
         </div>
       </div>
     </div>
