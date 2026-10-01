@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dbscope.api.routes.migration import router as migration_router
 from dbscope.api.routes.metadata import router as metadata_router
 from dbscope.api.routes.dependencies import router as dependencies_router
+from dbscope.api.routes.impact import router as impact_router
+from dbscope.api.routes.risk import router as risk_router
 from dbscope.api.routes.source import router as source_router
 
 app = FastAPI(
@@ -30,6 +32,8 @@ app.add_middleware(
 app.include_router(migration_router)
 app.include_router(metadata_router)
 app.include_router(dependencies_router)
+app.include_router(impact_router)
+app.include_router(risk_router)
 app.include_router(source_router)
 
 

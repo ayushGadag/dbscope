@@ -1,187 +1,174 @@
 import React from 'react';
 import {
-  Workflow,
   Database,
   Layers,
   FileCode,
   Globe,
   Terminal,
   Cpu,
-  ArrowRight,
   ShieldCheck,
-  Server,
+  Server
 } from 'lucide-react';
 
 export const Architecture: React.FC = () => {
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="pb-4 border-b border-[#232733]">
-        <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-          <Workflow className="w-5 h-5 text-blue-400" />
-          <span>Architecture Overview</span>
-        </h2>
-        <p className="text-xs text-slate-400 mt-1">
-          Layered static analysis pipeline for database change impact assessment.
-        </p>
-      </div>
-
-      {/* Ripple Pipeline Flow */}
-      <div className="rounded-lg p-5 bg-[#141720] border border-[#232733] space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-          Dependency / Data Relationship
-        </h3>
-        <p className="text-xs text-slate-400 leading-relaxed">
-          DBScope maps architectural dependencies across database schemas and application code tiers (not runtime execution sequence):
-        </p>
-
-        <div className="flex items-center justify-between gap-2 p-3.5 rounded bg-[#10131B] border border-[#232733] overflow-x-auto text-xs font-mono">
-          <div className="flex items-center gap-2 px-3 py-2 rounded bg-blue-950/40 text-blue-300 border border-blue-800/40 flex-shrink-0">
-            <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>PostgreSQL Schema</span>
-          </div>
-
-          <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded bg-purple-950/40 text-purple-300 border border-purple-800/40 flex-shrink-0">
-            <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>SQLAlchemy Models</span>
-          </div>
-
-          <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 flex-shrink-0">
-            <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Pydantic Schemas</span>
-          </div>
-
-          <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded bg-rose-950/40 text-rose-300 border border-rose-800/40 flex-shrink-0">
-            <Globe className="w-3.5 h-3.5 text-rose-400" />
-            <span>FastAPI Endpoints</span>
-          </div>
+    <div className="space-y-6">
+      {/* Action Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-700">Architecture Pipeline:</span>
+          <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
+            v2.1 Deterministic Engine
+          </span>
+          <span className="text-[11px] text-slate-500 hidden sm:inline">
+            3-Tier Static AST Lineage
+          </span>
         </div>
       </div>
 
-      {/* Layer 1 — Application Layer */}
-      <div className="rounded-lg p-5 bg-[#141720] border border-[#232733] space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#232733]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-              <Server className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-semibold">Layer 1</span>
-              <h3 className="text-sm font-semibold text-white">Application Layer</h3>
-            </div>
-          </div>
-          <span className="text-xs text-slate-400 font-mono">Consumer Codebase</span>
-        </div>
+      {/* Horizontal Lineage Flow Diagram */}
+      <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 sm:p-6 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-4">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
+          End-to-End Dependency Lineage Flow
+        </span>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <Globe className="w-4 h-4 text-cyan-400" />
-              <span>FastAPI REST Services</span>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Traces public HTTP endpoints, routing decorators (<code className="text-slate-300">@router.get</code>), and contract parameters exposed to external clients.
-            </p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
+          {/* Step 1 */}
+          <div className="p-4 rounded-2xl bg-[#f4f7f4] border border-[#e2e7e2] text-center space-y-1.5 hover:border-[#1c4e35] transition-all">
+            <Database className="w-5 h-5 text-sky-600 mx-auto" />
+            <div className="text-xs font-bold text-slate-900">PostgreSQL</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Physical Catalog</div>
           </div>
 
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <Layers className="w-4 h-4 text-purple-400" />
-              <span>SQLAlchemy ORM Models</span>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Maps database tables to Python model classes, declarative column definitions, and relationship cascades.
-            </p>
+          {/* Step 2 */}
+          <div className="p-4 rounded-2xl bg-[#f4f7f4] border border-[#e2e7e2] text-center space-y-1.5 hover:border-[#1c4e35] transition-all">
+            <Layers className="w-5 h-5 text-emerald-600 mx-auto" />
+            <div className="text-xs font-bold text-slate-900">SQLAlchemy ORM</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Model Mapping</div>
           </div>
 
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <FileCode className="w-4 h-4 text-emerald-400" />
-              <span>Pydantic Schemas</span>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Analyzes request/response serialization schemas, field validation rules, and JSON payload contracts.
-            </p>
+          {/* Step 3 */}
+          <div className="p-4 rounded-2xl bg-[#f4f7f4] border border-[#e2e7e2] text-center space-y-1.5 hover:border-[#1c4e35] transition-all">
+            <FileCode className="w-5 h-5 text-purple-600 mx-auto" />
+            <div className="text-xs font-bold text-slate-900">Pydantic Schemas</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Serialization Contract</div>
+          </div>
+
+          {/* Step 4 */}
+          <div className="p-4 rounded-2xl bg-[#f4f7f4] border border-[#e2e7e2] text-center space-y-1.5 hover:border-[#1c4e35] transition-all">
+            <Globe className="w-5 h-5 text-amber-600 mx-auto" />
+            <div className="text-xs font-bold text-slate-900">FastAPI Routes</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Public HTTP Endpoint</div>
           </div>
         </div>
       </div>
 
-      {/* Layer 2 — DBScope Analysis */}
-      <div className="rounded-lg p-5 bg-[#141720] border border-[#232733] space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#232733]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Cpu className="w-4 h-4" />
+      {/* 3-Tier Layer Details */}
+      <div className="space-y-4">
+        {/* Tier 1 */}
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 sm:p-6 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-slate-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Tier 1: Application Codebase Layer
+              </h3>
             </div>
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold">Layer 2</span>
-              <h3 className="text-sm font-semibold text-white">DBScope Analysis Engine</h3>
+            <span className="text-[11px] font-mono text-slate-400">Python 3.11+</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-amber-700 font-semibold">
+                <Globe className="w-4 h-4" />
+                <span>FastAPI Routes</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Traces public HTTP endpoint decorators, path parameters, and response models exposed to clients.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                <Layers className="w-4 h-4" />
+                <span>SQLAlchemy Models</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Inspects declarative class mappings, <code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200 text-slate-900">mapped_column</code>, and cascades linking tables to Python entities.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-purple-700 font-semibold">
+                <FileCode className="w-4 h-4" />
+                <span>Pydantic Schemas</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Analyzes request and response serialization schemas and payload contracts generated for client responses.
+              </p>
             </div>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Static Verification</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <Terminal className="w-4 h-4 text-amber-400" />
-              <span>Migration Analysis</span>
+        {/* Tier 2 */}
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 sm:p-6 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Cpu className="w-4 h-4 text-slate-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Tier 2: DBscope Static AST Engine
+              </h3>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Parses proposed DDL SQL into abstract syntax tree operations (DROP, ADD, ALTER, RENAME) to extract targeted entities safely.
-            </p>
+            <span className="text-[11px] font-mono text-slate-400">Core Engine</span>
           </div>
 
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <ShieldCheck className="w-4 h-4 text-blue-400" />
-              <span>Schema Metadata Analyzer</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-blue-700 font-semibold">
+                <Terminal className="w-4 h-4" />
+                <span>AST Parser</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Parses proposed DDL into abstract syntax tree operations (DROP, ADD, ALTER, RENAME) to isolate schema targets.
+              </p>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Read-only PostgreSQL catalog inspection (<code className="text-slate-300">information_schema</code>) ensuring zero modifications or execution against live databases.
-            </p>
-          </div>
 
-          <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-1.5">
-            <div className="flex items-center gap-2 text-white font-medium text-xs">
-              <Workflow className="w-4 h-4 text-indigo-400" />
-              <span>Dependency Extraction</span>
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Metadata Verifier</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Queries PostgreSQL catalogs (<code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200 text-slate-900">information_schema</code>) in read-only mode to confirm physical existence.
+              </p>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Static Python AST analysis of application models, schemas, and routes to identify references to affected database objects.
-            </p>
+
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-purple-700 font-semibold">
+                <Server className="w-4 h-4" />
+                <span>Blast Radius Extractor</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Traverses Python ASTs to trace how changes in table definitions propagate through fields to public HTTP response boundaries.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Layer 3 — Database */}
-      <div className="rounded-lg p-5 bg-[#141720] border border-[#232733] space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#232733]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Database className="w-4 h-4" />
+        {/* Tier 3 */}
+        <div className="rounded-2xl bg-white border border-[#e2e7e2] p-5 sm:p-6 shadow-[0_4px_20px_-2px_rgba(18,33,25,0.04)] space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-4 h-4 text-slate-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Tier 3: PostgreSQL Relational Storage
+              </h3>
             </div>
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-400 font-semibold">Layer 3</span>
-              <h3 className="text-sm font-semibold text-white">Database Layer</h3>
-            </div>
+            <span className="text-[11px] font-mono text-slate-400">Read-Only Introspection</span>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Relational Storage</span>
-        </div>
 
-        <div className="p-3.5 rounded bg-[#1A1E29] border border-[#232733] space-y-2">
-          <div className="flex items-center gap-2 text-white font-medium text-xs">
-            <Database className="w-4 h-4 text-blue-400" />
-            <span>PostgreSQL Relational Schema & Catalog Metadata</span>
-          </div>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Source of schema truth providing tables, column attributes, data types, nullability rules, foreign keys, and primary key constraints queried via standard system catalogs without executing any DDL or DML statements.
+          <p className="text-xs text-slate-600 leading-relaxed">
+            PostgreSQL relational storage serves as the authoritative source of schema definitions, constraints, nullability properties, and data types. DBscope only inspects system catalog views (<code className="font-mono bg-gray-100 px-1 rounded border border-gray-200 text-slate-900">information_schema.columns</code>, <code className="font-mono bg-gray-100 px-1 rounded border border-gray-200 text-slate-900">pg_catalog</code>) and never acquires table locks or modifies live database state.
           </p>
         </div>
       </div>
