@@ -2,8 +2,12 @@ import type { RiskAssessment } from '../types';
 
 export const mockRiskAssessment: RiskAssessment = {
   changed_object: 'users.email',
-  riskLevel: 'HIGH',
-  score: 88,
+  riskLevel: 'CRITICAL',
+  score: 8.0,
+  impactScore: 5,
+  likelihoodScore: 4,
+  rawScore: 8.0,
+  action: 'REVIEW',
   factors: [
     'Database column is being permanently removed with physical data truncation.',
     'SQLAlchemy ORM model User defines active attribute email mapped to this column.',

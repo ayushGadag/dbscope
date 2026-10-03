@@ -2,7 +2,7 @@ import React from 'react';
 import { ShieldAlert, Shield, ShieldCheck } from 'lucide-react';
 
 export interface RiskBadgeProps {
-  level: 'HIGH' | 'MEDIUM' | 'LOW' | 'High' | 'Medium' | 'Low';
+  level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'Critical' | 'High' | 'Medium' | 'Low';
   score?: number;
   showScore?: boolean;
   className?: string;
@@ -16,9 +16,15 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({
   className = '',
   size = 'xs',
 }) => {
-  const normalized = level.toUpperCase() as 'HIGH' | 'MEDIUM' | 'LOW';
+  const normalized = level.toUpperCase() as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
   const configs = {
+    CRITICAL: {
+      bg: 'bg-rose-100 text-rose-800 border-rose-300 font-bold',
+      dot: 'bg-rose-600',
+      icon: ShieldAlert,
+      label: 'Critical Risk',
+    },
     HIGH: {
       bg: 'bg-rose-50 text-rose-700 border-rose-200/90',
       dot: 'bg-rose-500',
@@ -52,7 +58,7 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({
       <span>{config.label}</span>
       {showScore && score !== undefined && (
         <span className="font-mono font-semibold ml-0.5 px-1 py-0.2 rounded bg-white/80 border border-current/20 text-[10px]">
-          {score}
+          {score > 10 ? (score / 10).toFixed(1) : score.toFixed(1)}/10
         </span>
       )}
     </span>

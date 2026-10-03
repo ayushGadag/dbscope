@@ -130,12 +130,33 @@ export const migrationService = {
     };
   },
 
+  getLastAnalyzedSql(): string | null {
+    try {
+      return localStorage.getItem('dbscope_last_analyzed_sql');
+    } catch {
+      return null;
+    }
+  },
+
+  setLastAnalyzedSql(sql: string): void {
+    try {
+      if (sql && sql.trim()) {
+        localStorage.setItem('dbscope_last_analyzed_sql', sql.trim());
+      } else {
+        localStorage.removeItem('dbscope_last_analyzed_sql');
+      }
+    } catch {}
+  },
+
   /**
    * Perform unified multi-tier change analysis across DB catalog and application AST.
    */
   async analyzeUnified(sql: string, dbConfig?: DatabaseConfig): Promise<UnifiedAnalysisResult> {
+    const trimmed = sql.trim();
+    this.setLastAnalyzedSql(trimmed);
+
     const payload = {
-      sql: sql.trim(),
+      sql: trimmed,
       host: dbConfig?.host,
       port: dbConfig?.port,
       database: dbConfig?.database,

@@ -33,9 +33,10 @@ export const RiskAssessment: React.FC = () => {
       });
   }, []);
 
-  const isHigh = riskData?.riskLevel === 'HIGH';
+  const isCritical = riskData?.riskLevel === 'CRITICAL';
+  const isHigh = riskData?.riskLevel === 'HIGH' || isCritical;
   const isMedium = riskData?.riskLevel === 'MEDIUM';
-  const score = riskData?.score ?? (isHigh ? 88 : isMedium ? 45 : 15);
+  const score = riskData?.rawScore ?? (riskData?.score ? (riskData.score > 10 ? riskData.score / 10 : riskData.score) : (isCritical ? 8.0 : isHigh ? 7.0 : isMedium ? 4.5 : 1.5));
   const changedObj = riskData?.changed_object || 'users.email';
 
   return (
@@ -94,9 +95,9 @@ export const RiskAssessment: React.FC = () => {
                         isHigh ? 'text-rose-600' : isMedium ? 'text-amber-600' : 'text-emerald-600'
                       }`}
                     >
-                      {score}
+                      {score.toFixed(1)}
                     </span>
-                    <span className="text-xs font-medium text-slate-400">/ 100</span>
+                    <span className="text-xs font-medium text-slate-400">/ 10</span>
                   </div>
 
                   <div className="space-y-1.5">
@@ -105,13 +106,13 @@ export const RiskAssessment: React.FC = () => {
                         className={`h-full rounded-full transition-all duration-700 shadow-2xs ${
                           isHigh ? 'bg-rose-500' : isMedium ? 'bg-amber-500' : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${Math.max(5, Math.min(100, score))}%` }}
+                        style={{ width: `${Math.max(5, Math.min(100, (score / 10) * 100))}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                      <span>0 (Safe)</span>
-                      <span>50 (Moderate)</span>
-                      <span>100 (Critical)</span>
+                      <span>0.0 (Safe)</span>
+                      <span>5.0 (Moderate)</span>
+                      <span>10.0 (Critical)</span>
                     </div>
                   </div>
                 </div>

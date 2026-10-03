@@ -9,9 +9,11 @@ export const riskService = {
    */
   async getRiskAssessment(
     changedObject: string = 'users.email',
-    dbConfig?: DatabaseConfig
+    dbConfig?: DatabaseConfig,
+    sql?: string
   ): Promise<RiskAssessment> {
     const payload = {
+      sql: sql ? sql.trim() : undefined,
       changed_object: changedObject,
       host: dbConfig?.host,
       port: dbConfig?.port,
@@ -56,12 +58,21 @@ export const riskService = {
         };
       });
 
-      const normalizedLevel = (d.risk_level === 'CRITICAL' ? 'HIGH' : d.risk_level) as 'HIGH' | 'MEDIUM' | 'LOW';
+      const normalizedLevel = (d.risk_level || 'HIGH') as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
       return {
         changed_object: d.database_object || changedObject,
         riskLevel: normalizedLevel,
-        score: Math.min(100, Math.round(d.risk_score * 10)),
+        score: d.risk_score,
+        impactScore: d.impact_score,
+        likelihoodScore: d.likelihood_score,
+        rawScore: d.risk_score,
+        reasons: d.reasons || [],
+        action: d.recommended_action || 'REVIEW',
+        affectedLayers: d.affected_layers || [],
+        operation: d.operation || 'DROP_COLUMN',
+        impactFactors: d.impact_factors || [],
+        likelihoodFactors: d.likelihood_factors || [],
         factors: factors.length > 0 ? factors : [`Affected downstream dependencies: ${d.dependency_count}`],
         evidence: evidence.length > 0 ? evidence : mockRiskAssessment.evidence,
         recommendation:

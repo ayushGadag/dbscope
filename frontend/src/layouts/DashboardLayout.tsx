@@ -21,6 +21,7 @@ import {
   Server
 } from 'lucide-react';
 import { Modal, Input, Button } from '../components/ui';
+import { scannerService } from '../services/scannerService';
 
 interface NavItem {
   name: string;
@@ -71,9 +72,9 @@ export const DashboardLayout: React.FC = () => {
       return {
         title: 'Overview',
         subtitle: 'Production database schema changes & AST impact telemetry',
-        kpi1: { label: 'Migration Safety', value: '92%', icon: 'shield', color: '#10b981' },
-        kpi2: { label: 'Blast Radius', value: '14 Nodes', icon: 'network', color: '#f59e0b' },
-        kpi3: { label: 'Breaking Drops', value: '1 Active', icon: 'flame', color: '#ef4444' },
+        kpi1: { label: 'Active Target', value: 'users.email', icon: 'database', color: '#10b981' },
+        kpi2: { label: 'Risk Gate Score', value: '8.0 / 10', icon: 'shield', color: '#ef4444' },
+        kpi3: { label: 'Blast Radius', value: '6 Nodes · 4 Tiers', icon: 'network', color: '#f59e0b' },
       };
     }
     if (p === '/projects') {
@@ -118,14 +119,14 @@ export const DashboardLayout: React.FC = () => {
         subtitle: 'Downstream affected consumer mapping with blast radius severity',
         kpi1: { label: 'Vulnerable Routes', value: '4 Endpoints', icon: 'alert', color: '#ef4444' },
         kpi2: { label: 'Schema Drift', value: '1 Detected', icon: 'layers', color: '#f59e0b' },
-        kpi3: { label: 'Blast Coverage', value: '88% Peak', icon: 'flame', color: '#ef4444' },
+        kpi3: { label: 'Blast Penetration', value: '4 Tiers Max', icon: 'flame', color: '#ef4444' },
       };
     }
     if (p === '/risk') {
       return {
         title: 'Risk Cockpit',
         subtitle: 'Safety score evaluation, locking impact, and runtime vulnerability rating',
-        kpi1: { label: 'Overall Risk Score', value: '88 / 100', icon: 'shield', color: '#ef4444' },
+        kpi1: { label: 'Overall Risk Score', value: '8.0 / 10', icon: 'shield', color: '#ef4444' },
         kpi2: { label: 'Access Lock', value: 'EXCLUSIVE', icon: 'lock', color: '#f59e0b' },
         kpi3: { label: 'Est. Downtime', value: 'High Risk', icon: 'clock', color: '#ef4444' },
       };
@@ -208,7 +209,7 @@ export const DashboardLayout: React.FC = () => {
 
               <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 text-[11px] font-medium text-emerald-200 border border-white/15 backdrop-blur-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>ecommerce_prod:5432</span>
+                <span>{scannerService.getActiveDbConfig().database || 'fastapi_demo'}:{scannerService.getActiveDbConfig().port || 5432}</span>
               </span>
             </div>
 
@@ -386,7 +387,7 @@ export const DashboardLayout: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Server className="w-4 h-4 text-emerald-300" />
-                    <span className="text-xs font-bold text-white tracking-wide">PG 16.2 CLUSTER</span>
+                    <span className="text-xs font-bold text-white tracking-wide">POSTGRES CATALOG</span>
                   </div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-400/30">
                     AST Online
@@ -395,26 +396,26 @@ export const DashboardLayout: React.FC = () => {
 
                 <div className="flex justify-between items-end text-[11px] text-white/80">
                   <span>Downstream Consumers</span>
-                  <span className="font-mono font-bold text-[#f6b93b]">42 Mapped</span>
+                  <span className="font-mono font-bold text-[#f6b93b]">6 Nodes Mapped</span>
                 </div>
               </div>
 
-              {/* Floating Tag Pill 1: Health (Top Left) */}
+              {/* Floating Tag Pill 1: Risk Gate (Top Left) */}
               <div className="absolute -top-1 left-2 px-3 py-1 rounded-full bg-white text-slate-800 text-xs font-semibold shadow-md flex items-center gap-1.5 animate-bounce [animation-duration:3s]">
                 <span className="w-2 h-2 rounded-full bg-rose-500" />
-                <span>Health 92%</span>
+                <span>Gate: BLOCK</span>
               </div>
 
-              {/* Floating Tag Pill 2: Water / Flow (Right Side) */}
+              {/* Floating Tag Pill 2: AST Parser (Right Side) */}
               <div className="absolute top-8 -right-3 px-3 py-1 rounded-full bg-white text-slate-800 text-xs font-semibold shadow-md flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
                 <span>AST Parser</span>
               </div>
 
-              {/* Floating Tag Pill 3: pH / Safety (Bottom Left) */}
+              {/* Floating Tag Pill 3: Zero Downtime (Bottom Left) */}
               <div className="absolute -bottom-2 left-6 px-3 py-1 rounded-full bg-white text-slate-800 text-xs font-semibold shadow-md flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span>Zero Downtime</span>
+                <span>Zero Downtime Safe</span>
               </div>
 
             </div>

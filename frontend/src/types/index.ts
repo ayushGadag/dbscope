@@ -143,11 +143,22 @@ export interface RiskEvidence {
 
 export interface RiskAssessment {
   changed_object: string;
-  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  /** Canonical DBScope risk score on the 0.0–10.0 scale (e.g. 8.0) */
   score: number;
   factors: string[];
   evidence: RiskEvidence[];
   recommendation: string;
+  impactScore?: number;
+  likelihoodScore?: number;
+  /** Canonical DBScope risk score on the 0.0–10.0 scale (e.g. 8.0) */
+  rawScore?: number;
+  reasons?: string[];
+  action?: string;
+  affectedLayers?: string[];
+  operation?: string;
+  impactFactors?: string[];
+  likelihoodFactors?: string[];
 }
 
 export interface PlanStep {

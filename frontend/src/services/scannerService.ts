@@ -32,11 +32,11 @@ interface GitHubScanResult {
 
 const DEFAULT_DB_CONFIG: DatabaseConfig = {
   type: 'PostgreSQL',
-  host: '',
+  host: 'localhost',
   port: 5432,
-  database: '',
-  username: '',
-  password: '',
+  database: 'fastapi_demo',
+  username: 'postgres',
+  password: 'password',
 };
 
 let _sessionDbConfig: DatabaseConfig = { ...DEFAULT_DB_CONFIG };

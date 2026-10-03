@@ -56,7 +56,7 @@ export const ImpactAnalysis: React.FC = () => {
   const hasHighSeverity = components.some((c) => c.severity === 'High');
   const hasMediumSeverity = components.some((c) => c.severity === 'Medium');
   const overallSeverity = hasHighSeverity ? 'HIGH' : hasMediumSeverity ? 'MEDIUM' : 'LOW';
-  const severityScore = hasHighSeverity ? 88 : hasMediumSeverity ? 45 : 15;
+  const severityScore = hasHighSeverity ? 8.0 : hasMediumSeverity ? 4.5 : 1.5;
 
   return (
     <div className="space-y-6">

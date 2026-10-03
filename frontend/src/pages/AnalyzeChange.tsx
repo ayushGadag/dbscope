@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play,
@@ -12,6 +12,8 @@ import {
   Globe,
   Database,
   RefreshCw,
+  Network,
+  ShieldAlert,
 } from 'lucide-react';
 import { migrationService } from '../services/migrationService';
 import { scannerService } from '../services/scannerService';
@@ -45,29 +47,59 @@ const exampleSnippets = [
 
 export const AnalyzeChange: React.FC = () => {
   const navigate = useNavigate();
+  const resultsRef = useRef<HTMLDivElement>(null);
   const [sql, setSql] = useState('ALTER TABLE users DROP COLUMN email;');
   const [analyzing, setAnalyzing] = useState(false);
   const [unifiedResult, setUnifiedResult] = useState<UnifiedAnalysisResult | null>(null);
+  const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  const handleAnalyze = (targetSql: string = sql) => {
+  const handleAnalyze = (targetSql: string = sql, shouldScroll: boolean = false) => {
     const trimmed = targetSql.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setErrorNotice('Please enter a valid SQL statement to analyze.');
+      return;
+    }
+
+    setErrorNotice(null);
     setAnalyzing(true);
     const activeDb = scannerService.getActiveDbConfig();
+    const startTime = Date.now();
+
     migrationService
       .analyzeUnified(trimmed, activeDb)
       .then((res) => {
-        setUnifiedResult(res);
-        setAnalyzing(false);
+        // Enforce 350ms minimum visual feedback so user visibly perceives execution
+        const elapsed = Date.now() - startTime;
+        const delay = Math.max(0, 350 - elapsed);
+        setTimeout(() => {
+          if (res.migration.status === 'Unsupported' || !res.migration.operation) {
+            setErrorNotice(
+              res.migration.message ||
+                'Unsupported migration statement. DBScope prototype supports: ALTER TABLE <table> DROP / ADD / ALTER / RENAME COLUMN.'
+            );
+          } else {
+            setErrorNotice(null);
+          }
+          setUnifiedResult(res);
+          setLastAnalyzedAt(new Date().toLocaleTimeString());
+          setAnalyzing(false);
+
+          if (shouldScroll) {
+            setTimeout(() => {
+              resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
+          }
+        }, delay);
       })
-      .catch(() => {
+      .catch((err) => {
         setAnalyzing(false);
+        setErrorNotice(err instanceof Error ? err.message : 'Error executing change impact analysis.');
       });
   };
 
-  useEffect(() => {
-    handleAnalyze(sql);
-  }, []);
+  // Note: We do NOT auto-run on mount or preset selection.
+  // Analysis is triggered ONLY when the user clicks 'Run Impact Analysis'.
 
   const migration = unifiedResult?.migration;
   const dbVerif = unifiedResult?.database_verification;
@@ -77,7 +109,7 @@ export const AnalyzeChange: React.FC = () => {
   const isHighRisk = impact?.severity === 'High';
   const isMediumRisk = impact?.severity === 'Medium';
   const riskLevel = isHighRisk ? 'HIGH' : isMediumRisk ? 'MEDIUM' : 'LOW';
-  const riskScore = isHighRisk ? 88 : isMediumRisk ? 45 : 15;
+  const riskScore = isHighRisk ? 8.0 : isMediumRisk ? 4.5 : 1.5;
 
   return (
     <div className="space-y-6">
@@ -103,7 +135,8 @@ export const AnalyzeChange: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setSql(snippet.sql);
-                  handleAnalyze(snippet.sql);
+                  setErrorNotice(null);
+                  // Staged for analysis — requires clicking 'Run Impact Analysis'
                 }}
                 className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-all cursor-pointer border ${
                   sql === snippet.sql
@@ -147,14 +180,19 @@ export const AnalyzeChange: React.FC = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setSql('')}
+              onClick={() => {
+                setSql('');
+                setUnifiedResult(null);
+                setLastAnalyzedAt(null);
+                setErrorNotice(null);
+              }}
             >
               Clear
             </Button>
             <Button
               variant="primary"
               size="sm"
-              onClick={() => handleAnalyze()}
+              onClick={() => handleAnalyze(sql, true)}
               disabled={!sql.trim() || analyzing}
               isLoading={analyzing}
               leftIcon={analyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
@@ -165,9 +203,100 @@ export const AnalyzeChange: React.FC = () => {
         </div>
       </div>
 
-      {/* Analysis Results */}
-      {unifiedResult && migration && (
-        <div className="space-y-6">
+      {/* Error Alert Banner */}
+      {errorNotice && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3 text-xs shadow-xs animate-in fade-in duration-200">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-semibold text-amber-800 block">Analysis Notice</span>
+            <p className="text-amber-700 leading-relaxed">{errorNotice}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Execution Confirmation Strip */}
+      {lastAnalyzedAt && unifiedResult && migration?.operation && (
+        <div className="p-3.5 px-4 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 text-emerald-900">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-semibold">Analysis complete at {lastAnalyzedAt}</span>
+              <span className="text-emerald-700 ml-1.5">
+                • Target: <span className="font-mono font-semibold">{migration.table}.{migration.column || migration.old_column || ''}</span>
+                {' '}({deps.length} downstream references found)
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Network className="w-3.5 h-3.5 text-slate-600" />}
+              onClick={() => navigate('/graph')}
+              className="bg-white border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+            >
+              View Graph
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Layers className="w-3.5 h-3.5 text-slate-600" />}
+              onClick={() => navigate('/impact')}
+              className="bg-white border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+            >
+              Impact Matrix
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<ShieldAlert className="w-3.5 h-3.5 text-slate-600" />}
+              onClick={() => navigate('/risk')}
+              className="bg-white border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+            >
+              Risk Score
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay State */}
+      {analyzing && (
+        <div className="p-8 rounded-xl bg-white border border-[#e2e7e2] text-center space-y-3 shadow-xs">
+          <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
+          <div className="text-xs font-semibold text-slate-900">Running Unified AST Analysis...</div>
+          <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+            Extracting affected SQLAlchemy models, Pydantic schemas, and FastAPI route handlers from source codebase.
+          </p>
+        </div>
+      )}
+
+      {/* Ready State (Before User Runs Analysis) */}
+      {!unifiedResult && !analyzing && !errorNotice && (
+        <div className="p-10 rounded-2xl bg-white border border-[#e2e7e2] text-center space-y-4 shadow-2xs">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto border border-emerald-100">
+            <Play className="w-5 h-5 fill-current ml-0.5" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Ready for Database Change Impact Analysis
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+              Select an operation preset above or write a custom DDL statement, then click <strong className="text-emerald-700 font-semibold">"Run Impact Analysis"</strong> to evaluate downstream dependencies across SQLAlchemy ORM models, Pydantic schemas, and FastAPI routes.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-2 text-[11px] text-slate-500 font-mono flex-wrap">
+            <span className="px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">DROP COLUMN</span>
+            <span className="px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">ADD COLUMN</span>
+            <span className="px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">ALTER COLUMN TYPE</span>
+            <span className="px-2.5 py-1 rounded-md bg-gray-100 text-slate-600 border border-gray-200">RENAME COLUMN</span>
+          </div>
+        </div>
+      )}
+
+      {/* Analysis Results Container */}
+      {unifiedResult && migration && !analyzing && (
+        <div ref={resultsRef} className="space-y-6 pt-2">
           {/* Section Header */}
           <div className="flex items-center justify-between pb-2 border-b border-gray-200/80">
             <div className="flex items-center gap-2">
