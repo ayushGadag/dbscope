@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { migrationService } from '../services/migrationService';
 import { scannerService } from '../services/scannerService';
+import { dependencyService } from '../services/dependencyService';
 import type { UnifiedAnalysisResult } from '../types';
 import { RiskBadge } from '../components/ui/RiskBadge';
 import { Badge } from '../components/ui/Badge';
@@ -53,6 +54,17 @@ export const AnalyzeChange: React.FC = () => {
   const [unifiedResult, setUnifiedResult] = useState<UnifiedAnalysisResult | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [discoveredObjects, setDiscoveredObjects] = useState<
+    Array<{ table: string; model: string; file: string; columns: string[] }>
+  >([]);
+
+  useEffect(() => {
+    dependencyService.getDiscoveredObjects().then((objs) => {
+      if (objs && objs.length > 0) {
+        setDiscoveredObjects(objs);
+      }
+    });
+  }, []);
 
   const handleAnalyze = (targetSql: string = sql, shouldScroll: boolean = false) => {
     const trimmed = targetSql.trim();
@@ -106,13 +118,91 @@ export const AnalyzeChange: React.FC = () => {
   const deps = unifiedResult?.application_dependencies || [];
   const impact = unifiedResult?.potential_impact;
 
-  const isHighRisk = impact?.severity === 'High';
-  const isMediumRisk = impact?.severity === 'Medium';
-  const riskLevel = isHighRisk ? 'HIGH' : isMediumRisk ? 'MEDIUM' : 'LOW';
-  const riskScore = isHighRisk ? 8.0 : isMediumRisk ? 4.5 : 1.5;
+  const riskAssessment = unifiedResult?.risk_assessment;
+  const rawScore = riskAssessment?.risk_score ?? impact?.risk_score;
+  const riskScore = typeof rawScore === 'number' ? rawScore : (impact?.severity === 'High' ? 8.0 : impact?.severity === 'Medium' ? 4.5 : 1.5);
+  const rawLevel = riskAssessment?.risk_level ?? impact?.risk_level ?? (impact?.severity === 'High' ? 'HIGH' : impact?.severity === 'Medium' ? 'MEDIUM' : 'LOW');
+  const riskLevel = (String(rawLevel).toUpperCase() as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW');
+  const isHighRisk = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
+  const isMediumRisk = riskLevel === 'MEDIUM';
 
   return (
     <div className="space-y-6">
+      {/* Dynamic Discovered Schema Objects from Connected Repository */}
+      {discoveredObjects.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#e2e7e2] shadow-[0_4px_20px_-2px_rgba(18,33,25,0.03)] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                <Database className="w-4 h-4 text-emerald-800" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Discovered Schema Objects in Connected Codebase
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                    {discoveredObjects.length} Models Detected
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Click any table or column below to auto-populate the migration statement, or type custom SQL below
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {discoveredObjects.map((obj) => (
+              <div
+                key={obj.table}
+                className="p-3.5 rounded-xl bg-[#f8faf8] border border-[#e2e7e2] hover:border-emerald-300 transition-colors space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span>{obj.table}</span>
+                    <span className="text-slate-400 font-normal text-[10.5px]">({obj.model})</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono truncate max-w-[110px]" title={obj.file}>
+                    {obj.file}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
+                    Columns ({obj.columns.length})
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {obj.columns.map((col) => {
+                      const isSelected = sql.includes(obj.table) && sql.includes(col);
+                      return (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => {
+                            setSql(`ALTER TABLE ${obj.table} DROP COLUMN ${col};`);
+                            setErrorNotice(null);
+                          }}
+                          className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#1c4e35] text-white border-[#1c4e35] font-bold shadow-xs'
+                              : 'bg-white text-slate-700 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/60'
+                          }`}
+                          title={`Auto-fill: ALTER TABLE ${obj.table} DROP COLUMN ${col};`}
+                        >
+                          {col}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* SQL Workbench */}
       <div className="rounded-xl bg-white border border-gray-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
         {/* Editor Toolbar */}

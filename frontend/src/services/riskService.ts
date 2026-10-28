@@ -1,11 +1,10 @@
 import { requestJson } from './api';
-import { mockRiskAssessment } from '../mock/risk';
 import type { DatabaseConfig, RiskAssessment, RiskEvidence } from '../types';
 
 export const riskService = {
   /**
    * Perform database change risk assessment.
-   * Calls real backend POST /api/risk/analyze with fallback to mock data if offline.
+   * Calls real backend POST /api/risk/analyze with safe empty fallback if offline.
    */
   async getRiskAssessment(
     changedObject: string = 'users.email',
@@ -74,7 +73,7 @@ export const riskService = {
         impactFactors: d.impact_factors || [],
         likelihoodFactors: d.likelihood_factors || [],
         factors: factors.length > 0 ? factors : [`Affected downstream dependencies: ${d.dependency_count}`],
-        evidence: evidence.length > 0 ? evidence : mockRiskAssessment.evidence,
+        evidence: evidence,
         recommendation:
           d.recommended_action === 'ALLOW'
             ? 'Safe migration change. The change does not cause breaking AST errors and can be applied without downtime.'
@@ -82,10 +81,19 @@ export const riskService = {
       };
     }
 
-    // Fallback prototype mock data
     return {
-      ...mockRiskAssessment,
       changed_object: changedObject,
+      riskLevel: 'LOW',
+      score: 0.0,
+      impactScore: 1,
+      likelihoodScore: 1,
+      rawScore: 0.0,
+      factors: ['Backend unreachable or no risk data available.'],
+      evidence: [],
+      recommendation: 'Unable to compute risk assessment: backend service is offline.',
+      action: 'ALLOW',
+      operation: 'UNKNOWN',
+      reasons: ['No active backend analysis available.'],
     };
   },
 };

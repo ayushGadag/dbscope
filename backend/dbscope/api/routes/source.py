@@ -15,12 +15,46 @@ from dbscope.api.schemas.dependencies import (
 from dbscope.source.connector import (
     collect_python_files,
     fetch_github_repository,
+    get_active_source_info,
     parse_github_url,
-    set_active_source_dir,
+    reset_active_source,
+    set_active_source,
     validate_and_extract_zip,
 )
 
 router = APIRouter(prefix="/api/source", tags=["Source Code"])
+
+
+@router.get(
+    "/active",
+    responses={
+        200: {"description": "Active source repository metadata"},
+    },
+)
+def get_active_source():
+    """
+    Get the currently active source repository metadata (name, type, files count, URL).
+    Enables frontend to synchronize state across reloads and server restarts.
+    """
+    return get_active_source_info()
+
+
+@router.post(
+    "/reset",
+    responses={
+        200: {"description": "Active source workspace reset to default"},
+    },
+)
+def reset_source():
+    """
+    Reset the active source workspace back to the built-in reference sample_app.
+    """
+    state = reset_active_source(to_sample=True)
+    return {
+        "success": True,
+        "message": "Active source reset to default sample_app reference.",
+        "state": state,
+    }
 
 
 @router.post(
@@ -57,10 +91,15 @@ async def upload_source_zip(file: UploadFile = File(...)):
 
         temp_dir = Path(tempfile.mkdtemp(prefix="dbscope_upload_"))
         extracted_py_files = validate_and_extract_zip(content, temp_dir)
-        set_active_source_dir(temp_dir)
-
-        size_mb = f"{len(content) / (1024 * 1024):.2f} MB"
         total_py = len(collect_python_files(temp_dir))
+        size_mb = f"{len(content) / (1024 * 1024):.2f} MB"
+
+        set_active_source(
+            path=temp_dir,
+            source_type="zip",
+            name=file.filename,
+            files_count=total_py,
+        )
 
         return {
             "success": True,
@@ -101,17 +140,25 @@ def scan_github_repository(request: ScanGitHubRequest):
         parsed = parse_github_url(request.url)
         temp_dir = Path(tempfile.mkdtemp(prefix="dbscope_github_"))
         result = fetch_github_repository(request.url, temp_dir)
-        set_active_source_dir(temp_dir)
-
         total_py = len(collect_python_files(temp_dir))
+
+        repo_name = f"{parsed['owner']}/{parsed['repo']}"
+        set_active_source(
+            path=temp_dir,
+            source_type="github",
+            name=repo_name,
+            url=parsed["clean_url"],
+            files_count=total_py,
+        )
+
         return {
             "success": True,
-            "repo_name": f"{parsed['owner']}/{parsed['repo']}",
+            "repo_name": repo_name,
             "branch": "main",
             "url": parsed["clean_url"],
             "files_count": total_py,
             "status": "Linked",
-            "message": f"Successfully ingested {parsed['owner']}/{parsed['repo']}. {total_py} Python source files discovered.",
+            "message": f"Successfully ingested {repo_name}. {total_py} Python source files discovered.",
         }
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))

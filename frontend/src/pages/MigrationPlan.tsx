@@ -7,6 +7,7 @@ import {
   CircleDashed
 } from 'lucide-react';
 import { reportService } from '../services/reportService';
+import { migrationService } from '../services/migrationService';
 import type { PlanStep } from '../types';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -14,9 +15,16 @@ import { Badge } from '../components/ui/Badge';
 export const MigrationPlan: React.FC = () => {
   const navigate = useNavigate();
   const [steps, setSteps] = useState<PlanStep[]>([]);
+  const [activeTarget, setActiveTarget] = useState<string>(() => migrationService.getLastTargetObject());
+  const [activeSql, setActiveSql] = useState<string | null>(() => migrationService.getLastAnalyzedSql());
 
   useEffect(() => {
-    reportService.getMigrationPlan('users.email').then((data) => {
+    const target = migrationService.getLastTargetObject();
+    const sql = migrationService.getLastAnalyzedSql();
+    setActiveTarget(target);
+    setActiveSql(sql);
+
+    reportService.getMigrationPlan(target, sql || undefined).then((data) => {
       setSteps(data.steps);
     });
   }, []);
@@ -34,13 +42,18 @@ export const MigrationPlan: React.FC = () => {
     <div className="space-y-6">
       {/* Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-700">Rollout Target:</span>
           <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
-            users.email
+            {activeTarget}
           </span>
+          {activeSql && (
+            <span className="text-[11px] font-mono text-slate-500 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200 truncate max-w-xs" title={activeSql}>
+              {activeSql}
+            </span>
+          )}
           <span className="text-[11px] font-mono px-2.5 py-0.5 bg-amber-50 text-amber-800 rounded-full border border-amber-200 font-semibold">
-            4-Phase Safe Deployment
+            {steps.length}-Phase Safe Deployment
           </span>
         </div>
 

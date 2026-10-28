@@ -6,9 +6,11 @@ import {
   FileSearch,
   CheckCircle2,
   RefreshCw,
+  Info,
 } from 'lucide-react';
 import { riskService } from '../services/riskService';
 import { scannerService } from '../services/scannerService';
+import { migrationService } from '../services/migrationService';
 import type { RiskAssessment as RiskType } from '../types';
 import { RiskBadge } from '../components/ui/RiskBadge';
 import { Badge } from '../components/ui/Badge';
@@ -18,14 +20,22 @@ export const RiskAssessment: React.FC = () => {
   const navigate = useNavigate();
   const [riskData, setRiskData] = useState<RiskType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [activeSql, setActiveSql] = useState<string | null>(() => migrationService.getLastAnalyzedSql());
 
   useEffect(() => {
     setLoading(true);
     const activeDb = scannerService.getActiveDbConfig();
+    const target = migrationService.getLastTargetObject();
+    const sql = migrationService.getLastAnalyzedSql();
+    setActiveSql(sql);
+
     riskService
-      .getRiskAssessment('users.email', activeDb)
+      .getRiskAssessment(target, activeDb, sql || undefined)
       .then((data) => {
         setRiskData(data);
+        if (data.changed_object) {
+          migrationService.setLastTargetObject(data.changed_object);
+        }
         setLoading(false);
       })
       .catch(() => {
@@ -36,18 +46,25 @@ export const RiskAssessment: React.FC = () => {
   const isCritical = riskData?.riskLevel === 'CRITICAL';
   const isHigh = riskData?.riskLevel === 'HIGH' || isCritical;
   const isMedium = riskData?.riskLevel === 'MEDIUM';
-  const score = riskData?.rawScore ?? (riskData?.score ? (riskData.score > 10 ? riskData.score / 10 : riskData.score) : (isCritical ? 8.0 : isHigh ? 7.0 : isMedium ? 4.5 : 1.5));
-  const changedObj = riskData?.changed_object || 'users.email';
+  const score = typeof riskData?.score === 'number'
+    ? riskData.score
+    : (typeof riskData?.rawScore === 'number' ? riskData.rawScore : 0.0);
+  const changedObj = riskData?.changed_object || migrationService.getLastTargetObject();
 
   return (
     <div className="space-y-6">
       {/* Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-700">Evaluation Scope:</span>
           <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
             {changedObj} DDL Mutation
           </span>
+          {activeSql && (
+            <span className="text-[11px] font-mono text-slate-500 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200 truncate max-w-xs" title={activeSql}>
+              {activeSql}
+            </span>
+          )}
           <span
             className={`text-[11px] font-mono px-2.5 py-0.5 rounded-full border font-semibold ${
               isHigh
@@ -240,6 +257,20 @@ export const RiskAssessment: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Analysis Scope & Static Analysis Boundaries */}
+          <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Static Analysis Scope & Boundary Disclosures</span>
+            </div>
+            <p className="text-slate-600 leading-relaxed text-[11px]">
+              <strong>Covered Scope:</strong> Static AST inspection extracts explicit Python declarations across SQLAlchemy models (<code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">Column</code>, <code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">mapped_column</code>), Pydantic request/response schemas (<code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">BaseModel</code>), and FastAPI route signatures.
+            </p>
+            <p className="text-slate-500 leading-relaxed text-[11px]">
+              <strong>Known Static Limitations:</strong> Dynamic SQL queries (<code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">session.execute(text(...))</code>), runtime reflection (<code className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">getattr(model, col)</code>), and external microservices consuming raw database streams cannot be definitively established via static analysis alone and require integration test coverage.
+            </p>
           </div>
         </>
       )}

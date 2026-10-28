@@ -1,18 +1,19 @@
 import { requestJson } from './api';
-import { mockDependencyGraph } from '../mock/dependencies';
 import type { DatabaseConfig, DependencyGraphData, DependencyItem } from '../types';
 
 export const dependencyService = {
   /**
    * Fetch interactive dependency graph nodes & edges.
-   * Calls backend POST /api/dependencies/graph with fallback to mock data if offline.
+   * Calls backend POST /api/dependencies/graph with safe empty fallback if offline.
    */
   async getDependencyGraph(
     changedObject: string = 'users.email',
-    dbConfig?: DatabaseConfig
+    dbConfig?: DatabaseConfig,
+    sql?: string
   ): Promise<DependencyGraphData> {
     const payload: Record<string, unknown> = {
       changed_object: changedObject,
+      sql: sql ? sql.trim() : undefined,
       host: dbConfig?.host,
       port: dbConfig?.port,
       database: dbConfig?.database,
@@ -29,10 +30,10 @@ export const dependencyService = {
       return res.data;
     }
 
-    // Fallback: mock prototype graph
     return {
-      ...mockDependencyGraph,
       changed_object: changedObject,
+      nodes: [],
+      edges: [],
     };
   },
 
@@ -49,35 +50,22 @@ export const dependencyService = {
       return res.data;
     }
 
-    // Fallback mock dependencies
     return {
       changed_object: changedObject,
-      dependencies: [
-        {
-          name: 'User.email',
-          type: 'orm_model',
-          file: 'models.py',
-          line: 17,
-          relationship: 'Maps to users.email column',
-          description: 'SQLAlchemy Column attribute defined on class User',
-        },
-        {
-          name: 'UserResponse.email',
-          type: 'pydantic_schema',
-          file: 'schemas.py',
-          line: 12,
-          relationship: 'Serializes users.email attribute',
-          description: 'Pydantic BaseModel attribute used for serialization',
-        },
-        {
-          name: 'GET /users/{id}',
-          type: 'fastapi_route',
-          file: 'routes.py',
-          line: 12,
-          relationship: 'Declares response_model=UserResponse',
-          description: 'FastAPI route handler declaring response_model=UserResponse',
-        },
-      ],
+      dependencies: [],
     };
+  },
+
+  /**
+   * Get dynamically discovered tables and columns from the active codebase.
+   */
+  async getDiscoveredObjects(): Promise<Array<{ table: string; model: string; file: string; columns: string[] }>> {
+    const res = await requestJson<{ objects: Array<{ table: string; model: string; file: string; columns: string[] }> }>(
+      '/api/dependencies/discovered-objects'
+    );
+    if (res.ok && res.data && res.data.objects) {
+      return res.data.objects;
+    }
+    return [];
   },
 };

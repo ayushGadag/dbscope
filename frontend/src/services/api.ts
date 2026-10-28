@@ -3,7 +3,18 @@
  * Handles communication with the DBScope FastAPI backend with graceful fallback.
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
+const getBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL as string;
+  }
+  // In browser, relative path utilizes Vite dev server proxy seamlessly
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  return 'http://127.0.0.1:8000';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 export interface ApiResponse<T> {
   ok: boolean;
@@ -11,6 +22,24 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   isBackendOffline?: boolean;
+}
+
+export interface BackendHealth {
+  healthy: boolean;
+  service?: string;
+  version?: string;
+}
+
+export async function checkBackendHealth(): Promise<BackendHealth> {
+  const res = await requestJson<{ status: string; service: string; version: string }>('/api/health');
+  if (res.ok && res.data && res.data.status === 'healthy') {
+    return {
+      healthy: true,
+      service: res.data.service,
+      version: res.data.version,
+    };
+  }
+  return { healthy: false };
 }
 
 export async function requestJson<T>(

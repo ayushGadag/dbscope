@@ -1,6 +1,6 @@
 /**
  * Core domain types for DBScope Enterprise Database Change Impact Analysis Platform.
- * Matches future FastAPI contracts and keeps mock/service layer decoupled.
+ * Matches FastAPI contracts and unified analysis schemas.
  */
 
 export interface Project {
@@ -115,9 +115,31 @@ export interface UnifiedAnalysisResult {
       pydantic_schema: string;
       fastapi_route: string;
     };
+    risk_score?: number;
+    risk_level?: string;
+    recommended_action?: string;
+    reasons?: string[];
   };
   graph: DependencyGraphData;
   is_live_db: boolean;
+  risk_assessment?: {
+    risk_score: number;
+    impact_score: number;
+    likelihood_score: number;
+    risk_level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+    recommended_action: string;
+    affected_components: string[];
+    affected_layers: string[];
+    reasons: string[];
+    operation: string;
+    database_object: string;
+    table: string;
+    column?: string;
+    dependency_count: number;
+    impact_factors?: string[];
+    likelihood_factors?: string[];
+    limitations?: string[];
+  };
 }
 
 export interface ImpactComponent {

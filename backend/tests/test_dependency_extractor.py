@@ -136,3 +136,91 @@ class TestDependencyAPI:
 
         assert response.status_code == 400
         assert "empty" in response.json()["detail"].lower()
+
+    def test_extract_async_routes_and_subscript_models(self, tmp_path):
+        """Verify extraction of async route handlers, APIRouter prefixes, and subscript response models."""
+        # Create models.py
+        models_code = '''
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True)
+    title = Column(String, nullable=False)
+'''
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        # Create schemas.py
+        schemas_code = '''
+from pydantic import BaseModel
+
+class PostBase(BaseModel):
+    title: str
+
+class PostOut(PostBase):
+    id: int
+'''
+        (tmp_path / "schemas.py").write_text(schemas_code, encoding="utf-8")
+
+        # Create routes.py with APIRouter prefix, async def, and subscript response_model
+        routes_code = '''
+from fastapi import APIRouter
+from schemas import PostOut, PostBase
+
+router = APIRouter(prefix="/posts", tags=["posts"])
+
+@router.get("/", response_model=list[PostOut])
+async def get_posts():
+    return []
+
+@router.post("/", response_model=PostOut)
+async def create_post(item: PostBase):
+    return item
+'''
+        (tmp_path / "routes.py").write_text(routes_code, encoding="utf-8")
+
+        extractor = DependencyExtractor(base_dir=tmp_path)
+        result = extractor.extract_dependencies("posts.title")
+
+        deps = result["dependencies"]
+        dep_names = [d["name"] for d in deps]
+
+        # Verify ORM model extracted
+        assert "Post.title" in dep_names
+
+        # Verify Pydantic schemas extracted (including subclass/parent)
+        assert any("Post" in name and "title" in name for name in dep_names)
+
+        # Verify async routes with prefix extracted
+        assert "GET /posts/" in dep_names
+        assert "POST /posts/" in dep_names
+
+    def test_extract_sqlalchemy_2_mapped_column(self, tmp_path):
+        """Verify extraction of modern SQLAlchemy 2.0 mapped_column() with Mapped annotations."""
+        models_code = '''
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import String
+
+class Base(DeclarativeBase):
+    pass
+
+class Article(Base):
+    __tablename__ = "articles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False)
+'''
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        extractor = DependencyExtractor(base_dir=tmp_path)
+        result = extractor.extract_dependencies("articles.slug")
+
+        deps = result["dependencies"]
+        assert len(deps) == 1
+        assert deps[0]["name"] == "Article.slug"
+        assert deps[0]["type"] == "orm_model"
+        assert deps[0]["file"] == "models.py"
+
+

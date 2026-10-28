@@ -581,3 +581,45 @@ class TestRiskAssessmentService:
         level, action = custom_service.determine_risk_level_and_action(4.0)
         assert level == RiskLevel.LOW
         assert action == RecommendedAction.ALLOW
+
+    # -------------------------------------------------------------------------
+    # 16. Exact Boundary and Threshold Mapping Tests
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "score,expected_level,expected_action",
+        [
+            (0.0, RiskLevel.LOW, RecommendedAction.ALLOW),
+            (0.4, RiskLevel.LOW, RecommendedAction.ALLOW),
+            (2.9, RiskLevel.LOW, RecommendedAction.ALLOW),
+            (3.0, RiskLevel.MEDIUM, RecommendedAction.REVIEW),
+            (4.5, RiskLevel.MEDIUM, RecommendedAction.REVIEW),
+            (5.9, RiskLevel.MEDIUM, RecommendedAction.REVIEW),
+            (6.0, RiskLevel.HIGH, RecommendedAction.REVIEW),
+            (7.5, RiskLevel.HIGH, RecommendedAction.REVIEW),
+            (7.9, RiskLevel.HIGH, RecommendedAction.REVIEW),
+            (8.0, RiskLevel.CRITICAL, RecommendedAction.REVIEW),
+            (10.0, RiskLevel.CRITICAL, RecommendedAction.REVIEW),
+            (10.5, RiskLevel.CRITICAL, RecommendedAction.REVIEW),
+        ],
+    )
+    def test_exact_risk_threshold_boundaries(self, service, score, expected_level, expected_action):
+        """Verify strict adherence to documented score-to-level thresholds."""
+        level, action = service.determine_risk_level_and_action(score)
+        assert level == expected_level
+        assert action == expected_action
+
+    def test_deterministic_scoring_reproducibility(self, service):
+        """Verify identical inputs produce strictly identical scores, levels, and reasons."""
+        sql = "ALTER TABLE users DROP COLUMN email;"
+        first_run = service.analyze(sql=sql)
+
+        for _ in range(5):
+            next_run = service.analyze(sql=sql)
+            assert next_run["risk_score"] == first_run["risk_score"]
+            assert next_run["risk_level"] == first_run["risk_level"]
+            assert next_run["recommended_action"] == first_run["recommended_action"]
+            assert next_run["impact_score"] == first_run["impact_score"]
+            assert next_run["likelihood_score"] == first_run["likelihood_score"]
+            assert next_run["reasons"] == first_run["reasons"]
+

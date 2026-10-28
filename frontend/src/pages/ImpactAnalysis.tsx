@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { impactService } from '../services/impactService';
 import { scannerService } from '../services/scannerService';
+import { migrationService } from '../services/migrationService';
 import type { ImpactResult } from '../types';
 import { RiskBadge } from '../components/ui/RiskBadge';
 import { Badge } from '../components/ui/Badge';
@@ -22,14 +23,22 @@ export const ImpactAnalysis: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
+  const [activeSql, setActiveSql] = useState<string | null>(() => migrationService.getLastAnalyzedSql());
 
   useEffect(() => {
     setLoading(true);
     const activeDb = scannerService.getActiveDbConfig();
+    const target = migrationService.getLastTargetObject();
+    const sql = migrationService.getLastAnalyzedSql();
+    setActiveSql(sql);
+
     impactService
-      .getImpactAnalysis('users.email', activeDb)
+      .getImpactAnalysis(target, activeDb, sql || undefined)
       .then((data) => {
         setImpactData(data);
+        if (data.changed_object) {
+          migrationService.setLastTargetObject(data.changed_object);
+        }
         setLoading(false);
       })
       .catch(() => {
@@ -38,7 +47,7 @@ export const ImpactAnalysis: React.FC = () => {
   }, []);
 
   const components = impactData?.components || [];
-  const targetObject = impactData?.changed_object || 'users.email';
+  const targetObject = impactData?.changed_object || migrationService.getLastTargetObject();
 
   const filtered = components.filter((comp) => {
     const matchesSearch =
@@ -62,11 +71,16 @@ export const ImpactAnalysis: React.FC = () => {
     <div className="space-y-6">
       {/* Scope Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-700">Target Entity:</span>
           <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
             {targetObject}
           </span>
+          {activeSql && (
+            <span className="text-[11px] font-mono text-slate-500 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200 truncate max-w-xs" title={activeSql}>
+              {activeSql}
+            </span>
+          )}
           <span className="text-[11px] text-slate-500 hidden md:inline">
             ({components.length} bound code references)
           </span>

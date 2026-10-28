@@ -1,18 +1,19 @@
 import { requestJson } from './api';
-import { mockImpactResult } from '../mock/impact';
 import type { DatabaseConfig, ImpactComponent, ImpactResult } from '../types';
 
 export const impactService = {
   /**
    * Perform database change impact analysis.
-   * Calls real backend POST /api/impact/analyze with fallback to mock data if offline.
+   * Calls real backend POST /api/impact/analyze with safe empty fallback if offline.
    */
   async getImpactAnalysis(
     changedObject: string = 'users.email',
-    dbConfig?: DatabaseConfig
+    dbConfig?: DatabaseConfig,
+    sql?: string
   ): Promise<ImpactResult> {
     const payload = {
       changed_object: changedObject,
+      sql: sql ? sql.trim() : undefined,
       host: dbConfig?.host,
       port: dbConfig?.port,
       database: dbConfig?.database,
@@ -59,10 +60,10 @@ export const impactService = {
       };
     }
 
-    // Fallback prototype mock data
     return {
-      ...mockImpactResult,
       changed_object: changedObject,
+      affectedCount: 0,
+      components: [],
     };
   },
 };

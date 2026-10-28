@@ -3,6 +3,7 @@ Tests for DBScope Source-Code and PostgreSQL Connectors, Unified Dependency Anal
 """
 
 import io
+import os
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -228,8 +229,8 @@ class TestSourceUploadAPI:
         assert "test_repo.zip" in data["filename"]
 
         # Reset active source dir to prevent test pollution
-        from dbscope.source.connector import set_active_source_dir
-        set_active_source_dir(None)
+        from dbscope.source.connector import reset_active_source
+        reset_active_source()
 
     def test_upload_non_zip_rejected(self):
         """Uploading non-zip file is rejected with 400."""
@@ -237,3 +238,251 @@ class TestSourceUploadAPI:
         res = client.post("/api/source/upload-zip", files=files)
         assert res.status_code == 400
         assert "only .zip" in res.json()["detail"].lower()
+
+    def test_get_active_source_and_reset_api(self):
+        """Verify GET /api/source/active and POST /api/source/reset."""
+        from dbscope.source.connector import set_active_source, reset_active_source
+        reset_active_source()
+
+        # Check initial default state
+        res = client.get("/api/source/active")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["source_type"] == "sample"
+        assert data["active"] is True
+
+        # Set custom active source
+        set_active_source(
+            source_type="github",
+            name="test-org/test-repo",
+            files_count=15,
+            local_path=str(Path.cwd()),
+        )
+        res_custom = client.get("/api/source/active")
+        assert res_custom.status_code == 200
+        assert res_custom.json()["name"] == "test-org/test-repo"
+        assert res_custom.json()["files_count"] == 15
+
+        # Reset active source
+        res_reset = client.post("/api/source/reset")
+        assert res_reset.status_code == 200
+        assert res_reset.json()["success"] is True
+
+        # Verify reverted to sample
+        res_after = client.get("/api/source/active")
+        assert res_after.json()["source_type"] == "sample"
+
+    def test_repository_switching_and_restart_recovery(self, tmp_path):
+        """Verify switching between repositories and recovering active state after process restart."""
+        from dbscope.source.connector import (
+            get_active_source_dir,
+            get_active_source_info,
+            reset_active_source,
+            set_active_source,
+        )
+
+        repo_a = tmp_path / "repo_a"
+        repo_a.mkdir()
+        (repo_a / "models.py").write_text("class Post: pass\n", encoding="utf-8")
+
+        repo_b = tmp_path / "repo_b"
+        repo_b.mkdir()
+        (repo_b / "users.py").write_text("class User: pass\n", encoding="utf-8")
+        (repo_b / "auth.py").write_text("class Auth: pass\n", encoding="utf-8")
+
+        # 1. Switch to Repo A
+        set_active_source(path=repo_a, source_type="custom", name="Repo A", files_count=1)
+        info_a = get_active_source_info()
+        assert info_a["name"] == "Repo A"
+        assert info_a["files_count"] == 1
+        assert Path(info_a["path"]).resolve() == repo_a.resolve()
+
+        # 2. Switch to Repo B
+        set_active_source(path=repo_b, source_type="custom", name="Repo B", files_count=2)
+        info_b = get_active_source_info()
+        assert info_b["name"] == "Repo B"
+        assert info_b["files_count"] == 2
+        assert Path(info_b["path"]).resolve() == repo_b.resolve()
+
+        # 3. Simulate backend process restart by clearing in-memory global
+        import dbscope.source.connector as conn_mod
+        conn_mod._ACTIVE_SOURCE_DIR = None
+
+        # Temporarily mock out PYTEST_CURRENT_TEST to test production restart recovery
+        with patch.dict(os.environ, {}, clear=False):
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                del os.environ["PYTEST_CURRENT_TEST"]
+            recovered_dir = get_active_source_dir()
+            assert recovered_dir.resolve() == repo_b.resolve()
+            recovered_info = get_active_source_info()
+            assert recovered_info["name"] == "Repo B"
+
+        # 4. Clean up
+        reset_active_source()
+
+    def test_invalid_or_deleted_repository_path_fallback(self, tmp_path):
+        """Verify deleted or invalid repository path falls back safely to default sample_app."""
+        from dbscope.source.connector import (
+            get_active_source_dir,
+            get_default_source_dir,
+            reset_active_source,
+            set_active_source,
+        )
+
+        non_existent_path = tmp_path / "deleted_repo_12345"
+
+        # Explicitly point state to non-existent path
+        set_active_source(path=non_existent_path, source_type="custom", name="Deleted")
+
+        # Simulate restart
+        import dbscope.source.connector as conn_mod
+        conn_mod._ACTIVE_SOURCE_DIR = None
+
+        with patch.dict(os.environ, {}, clear=False):
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                del os.environ["PYTEST_CURRENT_TEST"]
+            fallback_dir = get_active_source_dir()
+            assert fallback_dir.resolve() == get_default_source_dir().resolve()
+
+        reset_active_source()
+
+    def test_empty_repository_handling(self, tmp_path):
+        """Verify scanning directory with 0 python files returns empty list without error."""
+        empty_dir = tmp_path / "empty_workspace"
+        empty_dir.mkdir()
+        (empty_dir / "README.txt").write_text("no python here", encoding="utf-8")
+
+        py_files = collect_python_files(empty_dir)
+        assert py_files == []
+
+    def test_empty_repository_isolation_no_data_leakage(self, tmp_path):
+        """Confirm analysis against an empty repo returns 0 dependencies and does not leak from other repos."""
+        from dbscope.dependencies.extractor import DependencyExtractor
+
+        empty_dir = tmp_path / "isolated_empty_repo"
+        empty_dir.mkdir()
+        (empty_dir / "notes.md").write_text("# Documentation Only", encoding="utf-8")
+
+        extractor = DependencyExtractor(base_dir=empty_dir)
+        result = extractor.extract_dependencies("users.email")
+
+        assert result["changed_object"] == "users.email"
+        assert result["dependencies"] == []
+
+
+class TestAuditCorrectnessFixes:
+    """Regression tests for audit correctness issues:
+    1. Offline table verification using discovered repository metadata without claiming live DB existence/absence.
+    2. Consistency and differentiation between impact severity and overall risk level.
+    """
+
+    def test_offline_verification_uses_discovered_repository_metadata(self, tmp_path):
+        """Verify that offline database verification inspects discovered ORM models and does not claim live DB."""
+        models_code = """
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class Article(Base):
+    __tablename__ = "articles"
+    id = Column(Integer, primary_key=True)
+    slug = Column(String(200), nullable=False)
+"""
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService(default_source_dir=tmp_path)
+        verif = service.verify_database_object("articles", "slug", source_dir=tmp_path)
+
+        assert verif["is_live_db"] is False
+        assert verif["table_exists"] is True
+        assert verif["column_exists"] is True
+        assert verif["status"] == "Verified"
+        assert verif["verification_source"] == "repository_model"
+        assert "verified from repository ORM model 'Article'" in verif["message"]
+        assert "no live database configured" in verif["message"]
+        # Ensure it does NOT falsely claim live database catalog existence
+        assert "in live database catalog" not in verif["message"]
+        assert "in database catalog." not in verif["message"]
+
+    def test_offline_verification_unknown_table_honest_messaging(self, tmp_path):
+        """Verify non-existent table offline does not falsely claim live DB catalog absence."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService(default_source_dir=tmp_path)
+        verif = service.verify_database_object("nonexistent_tbl", "col", source_dir=tmp_path)
+
+        assert verif["is_live_db"] is False
+        assert verif["table_exists"] is False
+        assert verif["column_exists"] is False
+        assert verif["status"] == "Unverified"
+        assert "not found in discovered repository models" in verif["message"]
+        assert "no live database configured" in verif["message"]
+        # Ensure it does NOT falsely claim catalog absence
+        assert "in database catalog." not in verif["message"]
+
+    def test_offline_unified_analysis_with_custom_repo_verifies_custom_table(self, tmp_path):
+        """Unified analysis end-to-end verifies custom model table offline without live DB."""
+        models_code = """
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200))
+"""
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        result = service.analyze(
+            sql="ALTER TABLE blog_posts DROP COLUMN title;",
+            source_dir=tmp_path,
+        )
+
+        assert result["database_verification"]["table_exists"] is True
+        assert result["database_verification"]["column_exists"] is True
+        assert result["database_verification"]["status"] == "Verified"
+        assert result["database_verification"]["is_live_db"] is False
+        assert "blog_posts" in result["database_verification"]["message"]
+
+    def test_impact_severity_consistent_with_risk_level_on_rename(self):
+        """Verify RENAME COLUMN with breaking dependencies yields High impact severity and Critical risk level."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        # users.email in sample_app has 3 dependencies across model, schema, and route
+        result = service.analyze(sql="ALTER TABLE users RENAME COLUMN email TO contact_email;")
+
+        potential_impact = result["potential_impact"]
+        risk_assessment = result["risk_assessment"]
+
+        # Impact severity should be High because it breaks 3 components including public routes
+        assert potential_impact["severity"] == "High"
+        assert risk_assessment["risk_level"] in ("CRITICAL", "HIGH")
+        assert potential_impact["risk_level"] == risk_assessment["risk_level"]
+
+        # Rename updates must provide specific rename guidance rather than generic text
+        assert "Rename User.email attribute to 'contact_email'" in potential_impact["updates"]["orm_model"]
+        assert "contact_email" in potential_impact["updates"]["pydantic_schema"]
+
+        # Differentiated meanings must be present
+        assert "severity_meaning" in potential_impact
+        assert "risk_level_meaning" in potential_impact
+
+    def test_impact_severity_and_risk_level_zero_dependencies_consistency(self):
+        """Verify additive change with zero dependencies yields Low severity and Low risk level."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        result = service.analyze(sql="ALTER TABLE users ADD COLUMN phone_number VARCHAR(50);")
+
+        assert result["potential_impact"]["severity"] == "Low"
+        assert result["potential_impact"]["risk_level"] == "LOW"
+        assert result["risk_assessment"]["risk_score"] == 0.4
