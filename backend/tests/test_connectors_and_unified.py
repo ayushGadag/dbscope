@@ -370,4 +370,119 @@ class TestSourceUploadAPI:
         assert result["dependencies"] == []
 
 
+class TestAuditCorrectnessFixes:
+    """Regression tests for audit correctness issues:
+    1. Offline table verification using discovered repository metadata without claiming live DB existence/absence.
+    2. Consistency and differentiation between impact severity and overall risk level.
+    """
 
+    def test_offline_verification_uses_discovered_repository_metadata(self, tmp_path):
+        """Verify that offline database verification inspects discovered ORM models and does not claim live DB."""
+        models_code = """
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class Article(Base):
+    __tablename__ = "articles"
+    id = Column(Integer, primary_key=True)
+    slug = Column(String(200), nullable=False)
+"""
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService(default_source_dir=tmp_path)
+        verif = service.verify_database_object("articles", "slug", source_dir=tmp_path)
+
+        assert verif["is_live_db"] is False
+        assert verif["table_exists"] is True
+        assert verif["column_exists"] is True
+        assert verif["status"] == "Verified"
+        assert verif["verification_source"] == "repository_model"
+        assert "verified from repository ORM model 'Article'" in verif["message"]
+        assert "no live database configured" in verif["message"]
+        # Ensure it does NOT falsely claim live database catalog existence
+        assert "in live database catalog" not in verif["message"]
+        assert "in database catalog." not in verif["message"]
+
+    def test_offline_verification_unknown_table_honest_messaging(self, tmp_path):
+        """Verify non-existent table offline does not falsely claim live DB catalog absence."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService(default_source_dir=tmp_path)
+        verif = service.verify_database_object("nonexistent_tbl", "col", source_dir=tmp_path)
+
+        assert verif["is_live_db"] is False
+        assert verif["table_exists"] is False
+        assert verif["column_exists"] is False
+        assert verif["status"] == "Unverified"
+        assert "not found in discovered repository models" in verif["message"]
+        assert "no live database configured" in verif["message"]
+        # Ensure it does NOT falsely claim catalog absence
+        assert "in database catalog." not in verif["message"]
+
+    def test_offline_unified_analysis_with_custom_repo_verifies_custom_table(self, tmp_path):
+        """Unified analysis end-to-end verifies custom model table offline without live DB."""
+        models_code = """
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class BlogPost(Base):
+    __tablename__ = "blog_posts"
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200))
+"""
+        (tmp_path / "models.py").write_text(models_code, encoding="utf-8")
+
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        result = service.analyze(
+            sql="ALTER TABLE blog_posts DROP COLUMN title;",
+            source_dir=tmp_path,
+        )
+
+        assert result["database_verification"]["table_exists"] is True
+        assert result["database_verification"]["column_exists"] is True
+        assert result["database_verification"]["status"] == "Verified"
+        assert result["database_verification"]["is_live_db"] is False
+        assert "blog_posts" in result["database_verification"]["message"]
+
+    def test_impact_severity_consistent_with_risk_level_on_rename(self):
+        """Verify RENAME COLUMN with breaking dependencies yields High impact severity and Critical risk level."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        # users.email in sample_app has 3 dependencies across model, schema, and route
+        result = service.analyze(sql="ALTER TABLE users RENAME COLUMN email TO contact_email;")
+
+        potential_impact = result["potential_impact"]
+        risk_assessment = result["risk_assessment"]
+
+        # Impact severity should be High because it breaks 3 components including public routes
+        assert potential_impact["severity"] == "High"
+        assert risk_assessment["risk_level"] in ("CRITICAL", "HIGH")
+        assert potential_impact["risk_level"] == risk_assessment["risk_level"]
+
+        # Rename updates must provide specific rename guidance rather than generic text
+        assert "Rename User.email attribute to 'contact_email'" in potential_impact["updates"]["orm_model"]
+        assert "contact_email" in potential_impact["updates"]["pydantic_schema"]
+
+        # Differentiated meanings must be present
+        assert "severity_meaning" in potential_impact
+        assert "risk_level_meaning" in potential_impact
+
+    def test_impact_severity_and_risk_level_zero_dependencies_consistency(self):
+        """Verify additive change with zero dependencies yields Low severity and Low risk level."""
+        from dbscope.analysis_service import UnifiedAnalysisService
+
+        service = UnifiedAnalysisService()
+        result = service.analyze(sql="ALTER TABLE users ADD COLUMN phone_number VARCHAR(50);")
+
+        assert result["potential_impact"]["severity"] == "Low"
+        assert result["potential_impact"]["risk_level"] == "LOW"
+        assert result["risk_assessment"]["risk_score"] == 0.4

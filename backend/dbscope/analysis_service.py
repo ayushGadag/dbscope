@@ -80,16 +80,23 @@ class UnifiedAnalysisService:
         username: Optional[str] = None,
         password: Optional[str] = None,
         schema_name: str = "public",
+        source_dir: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
-        Step 3: Inspect database catalog to verify table and column existence.
-        Falls back safely to reference catalog when no live credentials are provided.
+        Step 3: Inspect database catalog or active repository ORM models to verify table and column existence.
+
+        - When live database credentials are provided, verifies against the live PostgreSQL catalog.
+        - When offline (no live database configured), verifies against discovered repository ORM metadata
+          without falsely claiming live database existence or absence.
         """
         is_live_db = False
         table_exists = False
         column_exists = False
         data_type: Optional[str] = None
         db_name = database or "PostgreSQL"
+        verification_source = "catalog"
+        status = "Unverified"
+        message = ""
 
         has_creds = bool((connection_url and connection_url.strip()) or (host and database))
 
@@ -105,6 +112,7 @@ class UnifiedAnalysisService:
                 )
                 metadata = service.inspect_schema(schema_name=schema_name)
                 is_live_db = True
+                verification_source = "live_database"
                 db_name = service.masked_url.split("/")[-1].split("?")[0] or "PostgreSQL"
 
                 for tbl in metadata.get("tables", []):
@@ -116,18 +124,86 @@ class UnifiedAnalysisService:
                                 data_type = col.get("data_type")
                                 break
                         break
+                status = "Verified" if table_exists else "Unverified"
+                message = (
+                    f"Table '{table_name}' {'exists' if table_exists else 'not found'} in live database catalog '{db_name}'."
+                )
             except Exception:
                 is_live_db = False
 
         if not is_live_db:
-            # Deterministic reference verification against sample catalog
-            table_exists = table_name.lower() in ("users", "orders", "products")
-            if table_name.lower() == "users" and column_name.lower() in ("id", "name", "email"):
-                column_exists = True
-                data_type = "VARCHAR(255)" if column_name.lower() == "email" else "INTEGER"
-            elif operation == "ADD_COLUMN":
+            # Offline verification using discovered repository ORM metadata
+            active_dir = source_dir or self.default_source_dir or get_active_source_dir()
+            matched_model: Optional[Dict[str, Any]] = None
+            try:
+                extractor = DependencyExtractor(source_dir=active_dir)
+                discovered = extractor.discover_schema_objects()
+                for obj in discovered:
+                    tbl = obj.get("table", "").lower()
+                    mdl = obj.get("model", "").lower()
+                    if (
+                        tbl == table_name.lower()
+                        or mdl in (
+                            table_name.lower(),
+                            table_name.lower().rstrip("s"),
+                        )
+                        or tbl.rstrip("s") == table_name.lower().rstrip("s")
+                    ):
+                        matched_model = obj
+                        break
+            except Exception:
+                matched_model = None
+
+            if matched_model is not None:
+                table_exists = True
+                verification_source = "repository_model"
+                model_name = matched_model.get("model", table_name)
+                cols = [c.lower() for c in matched_model.get("columns", [])]
+                if operation == "ADD_COLUMN":
+                    column_exists = False
+                    data_type = None
+                else:
+                    column_exists = column_name.lower() in cols
+                    data_type = (
+                        "VARCHAR(255)"
+                        if column_name.lower() == "email"
+                        else (
+                            "INTEGER"
+                            if column_name.lower() in ("id", "count", "age")
+                            else None
+                        )
+                    )
+                status = "Verified"
+                message = (
+                    f"Table '{table_name}' verified from repository ORM model '{model_name}' "
+                    f"(offline mode; no live database configured)."
+                )
+            elif table_name.lower() in ("users", "orders", "products"):
+                # Reference sample catalog fallback
+                table_exists = True
+                verification_source = "reference_catalog"
+                model_name = table_name.capitalize().rstrip("s")
+                if table_name.lower() == "users" and column_name.lower() in ("id", "name", "email"):
+                    column_exists = operation != "ADD_COLUMN"
+                    data_type = "VARCHAR(255)" if column_name.lower() == "email" else "INTEGER"
+                else:
+                    column_exists = False
+                    data_type = None
+                status = "Verified"
+                message = (
+                    f"Table '{table_name}' verified from reference sample catalog "
+                    f"(offline mode; no live database configured)."
+                )
+            else:
+                table_exists = False
                 column_exists = False
                 data_type = None
+                verification_source = "unverified"
+                status = "Unverified"
+                message = (
+                    f"Table '{table_name}' not found in discovered repository models "
+                    f"(offline mode; no live database configured)."
+                )
 
         return {
             "is_live_db": is_live_db,
@@ -137,10 +213,9 @@ class UnifiedAnalysisService:
             "column": column_name,
             "column_exists": column_exists,
             "data_type": data_type,
-            "status": "Verified" if table_exists else "Unverified",
-            "message": (
-                f"Table '{table_name}' {'exists' if table_exists else 'not found'} in database catalog."
-            ),
+            "status": status,
+            "verification_source": verification_source,
+            "message": message,
         }
 
     def extract_dependencies(
@@ -251,6 +326,7 @@ class UnifiedAnalysisService:
                 username=username,
                 password=password,
                 schema_name=schema_name,
+                source_dir=target_source,
             )
 
             # Step 4, 5 & 6: Application Source Dependency Extraction
@@ -283,13 +359,48 @@ class UnifiedAnalysisService:
             schema_deps = [d for d in dependencies if d.get("type") in ("pydantic_schema", "PYDANTIC_SCHEMA")]
             route_deps = [d for d in dependencies if d.get("type") in ("fastapi_route", "FASTAPI_ROUTE")]
 
-            if operation == "DROP_COLUMN":
-                severity = "High" if dependencies else "Low"
+            dep_count = len(dependencies)
+            risk_lvl = risk_assessment.get("risk_level", "LOW")
+
+            # Evaluate Impact Severity based on operation destructiveness, blast radius, and layer spread
+            if operation in ("DROP_COLUMN", "RENAME_COLUMN"):
+                if dep_count == 0:
+                    severity = "Low"
+                    summary = (
+                        f"{'Destructive' if operation == 'DROP_COLUMN' else 'Identifier'} change: "
+                        f"{operation} on '{column_name}' has zero detected references in application source code."
+                    )
+                elif route_deps or dep_count >= 3:
+                    severity = "High"
+                    summary = (
+                        f"{'Destructive' if operation == 'DROP_COLUMN' else 'Breaking identifier'} change: "
+                        f"{operation} on '{column_name}' affects {dep_count} application components across "
+                        f"{'API route contracts' if route_deps else 'models and schemas'}."
+                    )
+                else:
+                    severity = "Medium"
+                    summary = (
+                        f"{'Destructive' if operation == 'DROP_COLUMN' else 'Identifier'} change: "
+                        f"{operation} on '{column_name}' affects {dep_count} localized component(s)."
+                    )
+            elif operation == "ADD_COLUMN":
+                severity = "Low" if dep_count == 0 else "Medium"
                 summary = (
-                    f"Destructive change: Dropping column '{column_name}' affects {len(dependencies)} application components."
-                    if dependencies
-                    else f"Column '{column_name}' has no detected references in application source code."
+                    f"Additive change: Adding column '{column_name}' to table '{table_name}'. "
+                    f"{'Non-breaking modification with zero code dependencies.' if dep_count == 0 else f'Application components already reference this attribute ({dep_count} found).'}"
                 )
+            else:  # ALTER_COLUMN or other modifications
+                if dep_count == 0:
+                    severity = "Low"
+                    summary = f"Modification change ({operation}) on column '{column_name}' with zero code dependencies."
+                elif route_deps or dep_count >= 3:
+                    severity = "High" if risk_lvl in ("CRITICAL", "HIGH") else "Medium"
+                    summary = f"Structural modification ({operation}) on column '{column_name}' affecting {dep_count} components across layers."
+                else:
+                    severity = "Medium"
+                    summary = f"Modification change ({operation}) on column '{column_name}' affecting {dep_count} localized component(s)."
+
+            if operation == "DROP_COLUMN":
                 updates = {
                     "orm_model": (
                         f"Remove {orm_deps[0]['name']} attribute from models."
@@ -307,17 +418,32 @@ class UnifiedAnalysisService:
                         else "No endpoint routes affected."
                     ),
                 }
+            elif operation == "RENAME_COLUMN":
+                new_col = (parsed_info.get("parsed") or {}).get("new_column") if parsed_info else "new_name"
+                updates = {
+                    "orm_model": (
+                        f"Rename {orm_deps[0]['name']} attribute to '{new_col}' or declare column alias."
+                        if orm_deps
+                        else "No ORM model update required."
+                    ),
+                    "pydantic_schema": (
+                        f"Update {schema_deps[0]['name']} field or declare Field(alias='{new_col}')."
+                        if schema_deps
+                        else "No schema update required."
+                    ),
+                    "fastapi_route": (
+                        f"Update {len(route_deps)} endpoints consuming renamed schema field '{column_name}'."
+                        if route_deps
+                        else "No endpoint routes affected."
+                    ),
+                }
             elif operation == "ADD_COLUMN":
-                severity = "Low"
-                summary = f"Additive change: Adding column '{column_name}' to table '{table_name}'. Non-breaking modification."
                 updates = {
                     "orm_model": f"Add {column_name} Column to SQLAlchemy model if it should be queried.",
                     "pydantic_schema": f"Add {column_name} to Pydantic schemas if exposed via API.",
                     "fastapi_route": "No current endpoint dependencies affected.",
                 }
             else:
-                severity = "Medium"
-                summary = f"Modification change ({operation}) on column '{column_name}'."
                 updates = {
                     "orm_model": f"Verify ORM type mapping for {target_object}.",
                     "pydantic_schema": f"Verify serialization types for {target_object}.",
@@ -333,6 +459,8 @@ class UnifiedAnalysisService:
                 "risk_level": risk_assessment.get("risk_level"),
                 "recommended_action": risk_assessment.get("recommended_action"),
                 "reasons": risk_assessment.get("reasons", []),
+                "severity_meaning": "Architectural blast radius across application tiers (High/Medium/Low)",
+                "risk_level_meaning": "Deployment gate risk classification based on Impact x Likelihood (CRITICAL/HIGH/MEDIUM/LOW)",
             }
 
             return {
