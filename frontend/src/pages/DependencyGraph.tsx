@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { dependencyService } from '../services/dependencyService';
 import { scannerService } from '../services/scannerService';
+import { migrationService } from '../services/migrationService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 
@@ -279,11 +280,20 @@ export const DependencyGraph: React.FC = () => {
   const [currentNodes, setCurrentNodes] = useState<Node<DependencyNodeData>[]>([]);
   const [currentEdges, setCurrentEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node<DependencyNodeData> | null>(null);
+  const [activeTarget, setActiveTarget] = useState<string>(() => migrationService.getLastTargetObject());
+  const [activeSql, setActiveSql] = useState<string | null>(() => migrationService.getLastAnalyzedSql());
+  const [loadingGraph, setLoadingGraph] = useState<boolean>(true);
 
-  useEffect(() => {
+  const loadGraph = useCallback((target: string, sql?: string | null) => {
+    setLoadingGraph(true);
     const activeDb = scannerService.getActiveDbConfig();
-    dependencyService.getDependencyGraph('users.email', activeDb).then((res) => {
+    dependencyService.getDependencyGraph(target, activeDb, sql || undefined).then((res) => {
+      setLoadingGraph(false);
       if (res && res.nodes) {
+        if (res.changed_object) {
+          setActiveTarget(res.changed_object);
+          migrationService.setLastTargetObject(res.changed_object);
+        }
         const mappedNodes: Node<DependencyNodeData>[] = res.nodes.map((n, idx) => {
           const typeLower = (n.type || '').toLowerCase();
           return {
@@ -325,27 +335,56 @@ export const DependencyGraph: React.FC = () => {
           mappedNodes.find((n) => n.data.category === 'ORM Model') || mappedNodes[0];
         setSelectedNode(defaultTarget || null);
       }
+    }).catch(() => {
+      setLoadingGraph(false);
     });
   }, []);
+
+  useEffect(() => {
+    const target = migrationService.getLastTargetObject();
+    const sql = migrationService.getLastAnalyzedSql();
+    setActiveTarget(target);
+    setActiveSql(sql);
+    loadGraph(target, sql);
+  }, [loadGraph]);
 
   return (
     <div className="space-y-6">
       {/* Graph Action Toolbar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-700">Lineage Focus:</span>
           <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
-            users.email
+            {activeTarget}
           </span>
+          {activeSql && (
+            <span className="text-[11px] font-mono text-slate-500 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200 truncate max-w-xs" title={activeSql}>
+              {activeSql}
+            </span>
+          )}
+          {loadingGraph && (
+            <span className="text-xs text-slate-400 italic flex items-center gap-1">
+              Loading lineage...
+            </span>
+          )}
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
-          onClick={() => navigate('/impact')}
-        >
-          View Impact Matrix
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/analyze')}
+          >
+            Change DDL
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+            onClick={() => navigate('/impact')}
+          >
+            View Impact Matrix
+          </Button>
+        </div>
       </div>
 
       {/* Main Graph Grid (9 cols canvas, 3 cols inspector) */}

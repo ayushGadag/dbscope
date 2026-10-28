@@ -1,17 +1,30 @@
 import { requestJson } from './api';
-import { mockAnalysisResults, mockMigrations } from '../mock/migrations';
-import { mockDependencyGraph } from '../mock/dependencies';
 import type { DatabaseConfig, Migration, MigrationAnalysis, UnifiedAnalysisResult } from '../types';
 
 export const migrationService = {
   async getMigrations(): Promise<Migration[]> {
-    await new Promise((r) => setTimeout(r, 150));
-    return [...mockMigrations];
+    await new Promise((r) => setTimeout(r, 50));
+    try {
+      const stored = localStorage.getItem('dbscope_analysis_history');
+      if (stored) {
+        const history = JSON.parse(stored);
+        if (Array.isArray(history)) {
+          return history.map((item, idx) => ({
+            id: String(item.id || `mig-${idx}`),
+            title: `${item.operation || 'MIGRATION'} ${item.target_object || ''}`.trim(),
+            sql: item.sql_statement || '',
+            description: `Risk: ${item.risk_score || 0}/10 (${item.risk_level || 'LOW'})`,
+            createdAt: item.timestamp || new Date().toISOString(),
+          }));
+        }
+      }
+    } catch {}
+    return [];
   },
 
   /**
    * Analyze SQL migration statement.
-   * Calls real backend POST /api/migrations/analyze with fallback to mock parser if offline.
+   * Calls real backend POST /api/migrations/analyze.
    */
   async analyzeMigration(sql: string): Promise<MigrationAnalysis> {
     const trimmed = sql.trim();
@@ -56,77 +69,10 @@ export const migrationService = {
       };
     }
 
-    if (!res.isBackendOffline && res.status === 422) {
-      return {
-        operation: null,
-        status: 'Unsupported',
-        message: res.error || 'Unsupported migration operation.',
-      };
-    }
-
-    // Fallback: mock heuristics for offline/demo operation
-    if (mockAnalysisResults[trimmed]) {
-      return mockAnalysisResults[trimmed];
-    }
-
-    const upper = trimmed.toUpperCase();
-    if (upper.includes('DROP COLUMN')) {
-      const match = trimmed.match(/ALTER\s+TABLE\s+([^\s]+)\s+DROP\s+COLUMN\s+([^\s;]+)/i);
-      const table = match ? match[1].replace(/[`"']/g, '') : 'users';
-      const col = match ? match[2].replace(/[`"']/g, '') : 'column_name';
-      return {
-        operation: 'DROP_COLUMN',
-        table,
-        column: col,
-        changed_object: `${table}.${col}`,
-        status: 'Detected',
-        message: `Destructive DROP COLUMN operation detected on table '${table}' (Demo Mode).`,
-      };
-    } else if (upper.includes('ADD COLUMN')) {
-      const match = trimmed.match(/ALTER\s+TABLE\s+([^\s]+)\s+ADD\s+COLUMN\s+([^\s]+)\s+([^;]+)/i);
-      const table = match ? match[1].replace(/[`"']/g, '') : 'users';
-      const col = match ? match[2].replace(/[`"']/g, '') : 'new_col';
-      const dataType = match ? match[3].trim() : 'VARCHAR';
-      return {
-        operation: 'ADD_COLUMN',
-        table,
-        column: col,
-        data_type: dataType,
-        changed_object: `${table}.${col}`,
-        status: 'Detected',
-        message: `Additive ADD COLUMN operation detected on table '${table}' (Demo Mode).`,
-      };
-    } else if (upper.includes('ALTER COLUMN')) {
-      const match = trimmed.match(/ALTER\s+TABLE\s+([^\s]+)\s+ALTER\s+COLUMN\s+([^\s]+)\s+([^;]+)/i);
-      const table = match ? match[1].replace(/[`"']/g, '') : 'users';
-      const col = match ? match[2].replace(/[`"']/g, '') : 'col';
-      return {
-        operation: 'ALTER_COLUMN',
-        table,
-        column: col,
-        clause: match ? match[3].trim() : 'TYPE BIGINT',
-        changed_object: `${table}.${col}`,
-        status: 'Detected',
-        message: `Modification of column '${col}' on table '${table}' (Demo Mode).`,
-      };
-    } else if (upper.includes('RENAME COLUMN')) {
-      const match = trimmed.match(/ALTER\s+TABLE\s+([^\s]+)\s+RENAME\s+COLUMN\s+([^\s]+)\s+TO\s+([^\s;]+)/i);
-      const table = match ? match[1].replace(/[`"']/g, '') : 'users';
-      return {
-        operation: 'RENAME_COLUMN',
-        table,
-        old_column: match ? match[2] : 'old_col',
-        new_column: match ? match[3] : 'new_col',
-        changed_object: `${table}.${match ? match[2] : 'col'}`,
-        status: 'Detected',
-        message: `Column rename operation detected on table '${table}' (Demo Mode).`,
-      };
-    }
-
     return {
       operation: null,
-      status: 'Unsupported',
-      message: 'Unsupported migration operation. Supported in prototype: DROP COLUMN, ADD COLUMN, ALTER COLUMN, RENAME COLUMN.',
+      status: res.status === 422 ? 'Unsupported' : 'Invalid',
+      message: res.error || 'Failed to parse migration statement on DBScope backend.',
     };
   },
 
@@ -144,6 +90,43 @@ export const migrationService = {
         localStorage.setItem('dbscope_last_analyzed_sql', sql.trim());
       } else {
         localStorage.removeItem('dbscope_last_analyzed_sql');
+      }
+    } catch {}
+  },
+
+  getLastTargetObject(): string {
+    try {
+      return localStorage.getItem('dbscope_last_target_object') || 'users.email';
+    } catch {
+      return 'users.email';
+    }
+  },
+
+  setLastTargetObject(target: string): void {
+    try {
+      if (target && target.trim()) {
+        localStorage.setItem('dbscope_last_target_object', target.trim());
+      } else {
+        localStorage.removeItem('dbscope_last_target_object');
+      }
+    } catch {}
+  },
+
+  getLastAnalysis(): UnifiedAnalysisResult | null {
+    try {
+      const stored = localStorage.getItem('dbscope_last_analysis_result');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  setLastAnalysis(result: UnifiedAnalysisResult | null): void {
+    try {
+      if (result) {
+        localStorage.setItem('dbscope_last_analysis_result', JSON.stringify(result));
+      } else {
+        localStorage.removeItem('dbscope_last_analysis_result');
       }
     } catch {}
   },
@@ -170,77 +153,49 @@ export const migrationService = {
     });
 
     if (res.ok && res.data) {
+      const target =
+        res.data.graph?.changed_object ||
+        (res.data.migration?.table && res.data.migration?.column
+          ? `${res.data.migration.table}.${res.data.migration.column}`
+          : 'users.email');
+      this.setLastTargetObject(target);
+      this.setLastAnalysis(res.data);
+
+      // Record to analysis history for Reports
+      try {
+        const histRaw = localStorage.getItem('dbscope_analysis_history');
+        const history = histRaw ? JSON.parse(histRaw) : [];
+        const isAdd = res.data.migration?.operation === 'ADD_COLUMN';
+        const isAlter = res.data.migration?.operation === 'ALTER_COLUMN';
+        const isRename = res.data.migration?.operation === 'RENAME_COLUMN';
+        const opType = isAdd ? 'additive' : isAlter ? 'modification' : isRename ? 'rename' : 'destructive';
+        const riskLevel =
+          res.data.risk_assessment?.risk_level ||
+          (res.data.potential_impact?.severity === 'High'
+            ? 'HIGH'
+            : res.data.potential_impact?.severity === 'Medium'
+            ? 'MEDIUM'
+            : 'LOW');
+
+        history.unshift({
+          id: `rep-${Date.now()}`,
+          projectName: localStorage.getItem('dbscope_active_source')
+            ? JSON.parse(localStorage.getItem('dbscope_active_source')!).name
+            : 'Connected Repository',
+          targetDatabase: dbConfig?.database || 'PostgreSQL',
+          proposedMigration: trimmed,
+          timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
+          dependenciesCount: res.data.application_dependencies?.length ?? 0,
+          riskLevel: riskLevel,
+          planStepsCount: isAdd ? 7 : 9,
+          summary: `Static analysis of ${opType} migration targeting ${target}. Evaluated PostgreSQL catalogs, SQLAlchemy ORM bindings, Pydantic schemas, and FastAPI endpoints.`,
+        });
+        localStorage.setItem('dbscope_analysis_history', JSON.stringify(history.slice(0, 30)));
+      } catch {}
+
       return res.data;
     }
 
-    // Offline / Demo fallback
-    const parsed = await this.analyzeMigration(sql);
-    const changedObj = parsed.changed_object || 'users.email';
-    const isAdd = parsed.operation === 'ADD_COLUMN';
-
-    return {
-      migration: parsed,
-      database_verification: {
-        is_live_db: false,
-        table: parsed.table || 'users',
-        table_exists: true,
-        column: parsed.column || 'email',
-        column_exists: !isAdd,
-        data_type: parsed.data_type || 'VARCHAR(255)',
-        status: 'Reference Verified',
-        message: `Table '${parsed.table || 'users'}' verified against reference schema (Backend offline / Demo mode).`,
-      },
-      application_dependencies: isAdd
-        ? []
-        : [
-            {
-              name: 'User.email',
-              type: 'orm_model',
-              file: 'models.py',
-              line: 17,
-              relationship: 'Maps to users.email column',
-              description: 'SQLAlchemy Column attribute defined on class User',
-            },
-            {
-              name: 'UserResponse.email',
-              type: 'pydantic_schema',
-              file: 'schemas.py',
-              line: 12,
-              relationship: 'Serializes users.email attribute',
-              description: 'Pydantic BaseModel attribute used for serialization',
-            },
-            {
-              name: 'GET /users/{id}',
-              type: 'fastapi_route',
-              file: 'routes.py',
-              line: 12,
-              relationship: 'Declares response_model=UserResponse',
-              description: 'FastAPI route handler declaring response_model=UserResponse',
-            },
-          ],
-      potential_impact: {
-        severity: isAdd ? 'Low' : 'High',
-        summary: isAdd
-          ? `Additive column '${parsed.column}' has no existing application dependencies.`
-          : `Destructive DROP COLUMN operation affects 3 downstream application components.`,
-        affected_count: isAdd ? 0 : 3,
-        updates: {
-          orm_model: isAdd
-            ? `User.${parsed.column} may need to be added if queried.`
-            : `Remove User.email attribute from models.py`,
-          pydantic_schema: isAdd
-            ? `Add ${parsed.column} to UserResponse if exposed through the API.`
-            : `Remove email field or mark Optional in schemas.py`,
-          fastapi_route: isAdd
-            ? 'No current endpoint dependency detected.'
-            : 'Update GET /users/{id} API response contract.',
-        },
-      },
-      graph: {
-        ...mockDependencyGraph,
-        changed_object: changedObj,
-      },
-      is_live_db: false,
-    };
+    throw new Error(res.error || 'Failed to analyze migration on DBScope backend server.');
   },
 };

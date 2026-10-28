@@ -160,11 +160,10 @@ export const scannerService = {
     }
 
     if (res.isBackendOffline) {
-      // Fallback demo mode when backend server is not running
       return {
-        success: true,
-        message: 'Connection successful (Demo Mode)',
-        details: `Connected to reference PostgreSQL at ${config.host}:${config.port}/${config.database} (DBScope backend server offline; running in demo mode).`,
+        success: false,
+        message: 'Connection failed: Backend offline',
+        details: `Unable to connect to PostgreSQL at ${config.host}:${config.port}/${config.database}. DBScope backend server is offline or unreachable on port 8000.`,
       };
     }
 
@@ -216,10 +215,10 @@ export const scannerService = {
 
     if (res.isBackendOffline) {
       return {
-        success: true,
-        tablesCount: 18,
-        columnsCount: 142,
-        message: `Inspected PostgreSQL schema 'public' for ${config.database} (Demo Reference). 18 tables, 142 columns detected.`,
+        success: false,
+        tablesCount: 0,
+        columnsCount: 0,
+        message: `Failed to inspect database: DBScope backend server is offline. Please start the backend on port 8000.`,
       };
     }
 
@@ -263,16 +262,6 @@ export const scannerService = {
       };
     }
 
-    if (res.isBackendOffline) {
-      return {
-        success: true,
-        filename: file.name,
-        size: `${sizeMb} MB`,
-        status: 'Staged for Analysis (Demo Mode)',
-        message: `Local file staged: ${file.name}`,
-      };
-    }
-
     return {
       success: false,
       filename: file.name,
@@ -302,6 +291,10 @@ export const scannerService = {
     });
 
     if (res.ok && res.data) {
+      this.saveActiveSource({
+        name: `${res.data.repo_name} (GitHub)`,
+        size: `${res.data.files_count} Python files`,
+      });
       return {
         success: true,
         repoName: res.data.repo_name,
@@ -311,33 +304,67 @@ export const scannerService = {
       };
     }
 
-    if (res.isBackendOffline) {
-      if (!trimmed.startsWith('https://github.com/')) {
-        return {
-          success: false,
-          repoName: '',
-          branch: '',
-          status: 'Invalid URL',
-          message: 'Please provide a valid GitHub repository URL (e.g. https://github.com/example/ecommerce-demo).',
-        };
-      }
-      const pathParts = trimmed.replace('https://github.com/', '').split('/');
-      const repoName = pathParts.slice(0, 2).join('/');
-      return {
-        success: true,
-        repoName: repoName || 'example/ecommerce-demo',
-        branch: 'main',
-        status: 'Repository Linked (Demo Mode)',
-        message: `Demo reference linked for ${repoName}`,
-      };
-    }
-
     return {
       success: false,
       repoName: '',
       branch: '',
       status: 'Connection Failed',
       message: res.error || 'Failed to connect to GitHub repository.',
+    };
+  },
+
+  /**
+   * Query the live backend for current active application source info.
+   */
+  async getActiveSourceInfo(): Promise<{
+    active: boolean;
+    type: string;
+    name?: string;
+    files_count?: number;
+    path?: string;
+    message?: string;
+  }> {
+    const res = await requestJson<{
+      active: boolean;
+      type: string;
+      name?: string;
+      files_count?: number;
+      path?: string;
+      message?: string;
+    }>('/api/source/active');
+
+    if (res.ok && res.data) {
+      if (res.data.active && res.data.name) {
+        this.saveActiveSource({
+          name: res.data.name,
+          size: `${res.data.files_count ?? 0} Python files`,
+        });
+      }
+      return res.data;
+    }
+
+    return {
+      active: false,
+      type: 'sample',
+      name: 'Built-in sample_app',
+      message: 'Running against default sample_app reference workspace.',
+    };
+  },
+
+  /**
+   * Reset backend active source to built-in sample_app reference workspace.
+   */
+  async resetActiveSource(): Promise<{ success: boolean; message: string }> {
+    this.saveActiveSource(null);
+    const res = await requestJson<{ success: boolean; message: string }>('/api/source/reset', {
+      method: 'POST',
+    });
+    if (res.ok && res.data) {
+      return res.data;
+    }
+    return {
+      success: true,
+      message: 'Reset active source to default reference workspace.',
     };
   },
 };

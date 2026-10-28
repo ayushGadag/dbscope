@@ -3,6 +3,7 @@ Tests for DBScope Source-Code and PostgreSQL Connectors, Unified Dependency Anal
 """
 
 import io
+import os
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -228,8 +229,8 @@ class TestSourceUploadAPI:
         assert "test_repo.zip" in data["filename"]
 
         # Reset active source dir to prevent test pollution
-        from dbscope.source.connector import set_active_source_dir
-        set_active_source_dir(None)
+        from dbscope.source.connector import reset_active_source
+        reset_active_source()
 
     def test_upload_non_zip_rejected(self):
         """Uploading non-zip file is rejected with 400."""
@@ -237,3 +238,136 @@ class TestSourceUploadAPI:
         res = client.post("/api/source/upload-zip", files=files)
         assert res.status_code == 400
         assert "only .zip" in res.json()["detail"].lower()
+
+    def test_get_active_source_and_reset_api(self):
+        """Verify GET /api/source/active and POST /api/source/reset."""
+        from dbscope.source.connector import set_active_source, reset_active_source
+        reset_active_source()
+
+        # Check initial default state
+        res = client.get("/api/source/active")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["source_type"] == "sample"
+        assert data["active"] is True
+
+        # Set custom active source
+        set_active_source(
+            source_type="github",
+            name="test-org/test-repo",
+            files_count=15,
+            local_path=str(Path.cwd()),
+        )
+        res_custom = client.get("/api/source/active")
+        assert res_custom.status_code == 200
+        assert res_custom.json()["name"] == "test-org/test-repo"
+        assert res_custom.json()["files_count"] == 15
+
+        # Reset active source
+        res_reset = client.post("/api/source/reset")
+        assert res_reset.status_code == 200
+        assert res_reset.json()["success"] is True
+
+        # Verify reverted to sample
+        res_after = client.get("/api/source/active")
+        assert res_after.json()["source_type"] == "sample"
+
+    def test_repository_switching_and_restart_recovery(self, tmp_path):
+        """Verify switching between repositories and recovering active state after process restart."""
+        from dbscope.source.connector import (
+            get_active_source_dir,
+            get_active_source_info,
+            reset_active_source,
+            set_active_source,
+        )
+
+        repo_a = tmp_path / "repo_a"
+        repo_a.mkdir()
+        (repo_a / "models.py").write_text("class Post: pass\n", encoding="utf-8")
+
+        repo_b = tmp_path / "repo_b"
+        repo_b.mkdir()
+        (repo_b / "users.py").write_text("class User: pass\n", encoding="utf-8")
+        (repo_b / "auth.py").write_text("class Auth: pass\n", encoding="utf-8")
+
+        # 1. Switch to Repo A
+        set_active_source(path=repo_a, source_type="custom", name="Repo A", files_count=1)
+        info_a = get_active_source_info()
+        assert info_a["name"] == "Repo A"
+        assert info_a["files_count"] == 1
+        assert Path(info_a["path"]).resolve() == repo_a.resolve()
+
+        # 2. Switch to Repo B
+        set_active_source(path=repo_b, source_type="custom", name="Repo B", files_count=2)
+        info_b = get_active_source_info()
+        assert info_b["name"] == "Repo B"
+        assert info_b["files_count"] == 2
+        assert Path(info_b["path"]).resolve() == repo_b.resolve()
+
+        # 3. Simulate backend process restart by clearing in-memory global
+        import dbscope.source.connector as conn_mod
+        conn_mod._ACTIVE_SOURCE_DIR = None
+
+        # Temporarily mock out PYTEST_CURRENT_TEST to test production restart recovery
+        with patch.dict(os.environ, {}, clear=False):
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                del os.environ["PYTEST_CURRENT_TEST"]
+            recovered_dir = get_active_source_dir()
+            assert recovered_dir.resolve() == repo_b.resolve()
+            recovered_info = get_active_source_info()
+            assert recovered_info["name"] == "Repo B"
+
+        # 4. Clean up
+        reset_active_source()
+
+    def test_invalid_or_deleted_repository_path_fallback(self, tmp_path):
+        """Verify deleted or invalid repository path falls back safely to default sample_app."""
+        from dbscope.source.connector import (
+            get_active_source_dir,
+            get_default_source_dir,
+            reset_active_source,
+            set_active_source,
+        )
+
+        non_existent_path = tmp_path / "deleted_repo_12345"
+
+        # Explicitly point state to non-existent path
+        set_active_source(path=non_existent_path, source_type="custom", name="Deleted")
+
+        # Simulate restart
+        import dbscope.source.connector as conn_mod
+        conn_mod._ACTIVE_SOURCE_DIR = None
+
+        with patch.dict(os.environ, {}, clear=False):
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                del os.environ["PYTEST_CURRENT_TEST"]
+            fallback_dir = get_active_source_dir()
+            assert fallback_dir.resolve() == get_default_source_dir().resolve()
+
+        reset_active_source()
+
+    def test_empty_repository_handling(self, tmp_path):
+        """Verify scanning directory with 0 python files returns empty list without error."""
+        empty_dir = tmp_path / "empty_workspace"
+        empty_dir.mkdir()
+        (empty_dir / "README.txt").write_text("no python here", encoding="utf-8")
+
+        py_files = collect_python_files(empty_dir)
+        assert py_files == []
+
+    def test_empty_repository_isolation_no_data_leakage(self, tmp_path):
+        """Confirm analysis against an empty repo returns 0 dependencies and does not leak from other repos."""
+        from dbscope.dependencies.extractor import DependencyExtractor
+
+        empty_dir = tmp_path / "isolated_empty_repo"
+        empty_dir.mkdir()
+        (empty_dir / "notes.md").write_text("# Documentation Only", encoding="utf-8")
+
+        extractor = DependencyExtractor(base_dir=empty_dir)
+        result = extractor.extract_dependencies("users.email")
+
+        assert result["changed_object"] == "users.email"
+        assert result["dependencies"] == []
+
+
+

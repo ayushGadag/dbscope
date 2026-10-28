@@ -17,6 +17,24 @@ from dbscope.source.connector import get_active_source_dir
 router = APIRouter(prefix="/api/dependencies", tags=["Dependencies"])
 
 
+@router.get(
+    "/discovered-objects",
+    responses={
+        200: {"description": "Discovered ORM models and columns from active codebase"},
+    },
+)
+def get_discovered_objects():
+    """
+    Dynamically discover all tables, SQLAlchemy models, and columns in the active codebase.
+    """
+    extractor = DependencyExtractor(source_dir=get_active_source_dir())
+    try:
+        objects = extractor.discover_schema_objects()
+        return {"objects": objects, "source_dir": str(extractor.source_dir)}
+    except Exception as e:
+        return {"objects": [], "error": str(e)}
+
+
 @router.post(
     "/extract",
     response_model=DependencyExtractResponse,

@@ -17,23 +17,41 @@ import { Input, Button } from '../components/ui';
 
 export const ProjectScanner: React.FC = () => {
   // Source Method: 'zip' or 'github'
-  const [sourceType, setSourceType] = useState<'zip' | 'github'>('zip');
+  const [sourceType, setSourceType] = useState<'zip' | 'github'>('github');
 
-  // ZIP Method State
+  // Active Source State (loaded from backend & persistent session)
   const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>(() => {
-    return (
-      scannerService.getActiveSource() || {
-        name: 'ecommerce-backend-v2.zip',
-        size: '4.85 MB',
-      }
-    );
+    return scannerService.getActiveSource();
   });
   const [uploadingZip, setUploadingZip] = useState(false);
 
   // GitHub Method State
-  const [githubUrl, setGithubUrl] = useState('https://github.com/Fab-0x/fastapi-demo');
-  const [githubStatus, setGithubStatus] = useState<string | null>(null);
+  const [githubUrl, setGithubUrl] = useState('https://github.com/tdgibadullin/fastapi-sqlalchemy-app');
+  const [githubResult, setGithubResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const [scanningGithub, setScanningGithub] = useState(false);
+
+  // Sync active source with backend on mount
+  React.useEffect(() => {
+    let isMounted = true;
+    scannerService.getActiveSourceInfo().then((info) => {
+      if (isMounted) {
+        if (info && info.active && info.name) {
+          setSelectedFile({
+            name: info.name,
+            size: `${info.files_count ?? 0} Python files`,
+          });
+        } else {
+          setSelectedFile(null);
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Database Config State
   const [dbConfig, setDbConfig] = useState<DatabaseConfig>(() => {
@@ -84,26 +102,39 @@ export const ProjectScanner: React.FC = () => {
     }
   };
 
-  const handleRemoveFile = () => {
-    scannerService.saveActiveSource(null);
+  const handleRemoveFile = async () => {
+    await scannerService.resetActiveSource();
     setSelectedFile(null);
+    setGithubResult(null);
+    setGithubUrl('');
   };
 
   const handleUseGithub = async () => {
     if (!githubUrl.trim()) return;
     setScanningGithub(true);
-    setGithubStatus('Connecting and introspecting GitHub repository AST trees...');
+    setGithubResult(null);
     try {
       const res = await scannerService.validateGitHubUrl(githubUrl);
       if (res.success) {
-        setGithubStatus(
-          `Repository ${res.repoName} (${res.branch}) connected: ${res.message || res.status}`
-        );
+        setGithubResult({
+          success: true,
+          message: `Repository ${res.repoName} (${res.branch}) connected: ${res.message || res.status}`,
+        });
+        setSelectedFile({
+          name: `${res.repoName} (GitHub)`,
+          size: 'Linked Repository',
+        });
       } else {
-        setGithubStatus(`Connection warning: ${res.message || res.status}`);
+        setGithubResult({
+          success: false,
+          message: res.message || 'Failed to connect to GitHub repository.',
+        });
       }
-    } catch {
-      setGithubStatus('Failed to connect to GitHub repository.');
+    } catch (err) {
+      setGithubResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to connect to GitHub repository.',
+      });
     } finally {
       setScanningGithub(false);
     }
@@ -256,6 +287,32 @@ export const ProjectScanner: React.FC = () => {
           {/* Option B: GitHub */}
           {sourceType === 'github' && (
             <div className="space-y-3">
+              {selectedFile && (
+                <div className="p-3.5 border border-emerald-200 bg-emerald-50/50 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 border border-emerald-200 text-emerald-800 flex items-center justify-center shrink-0">
+                      <GitBranch className="w-4 h-4 text-emerald-800" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-900 truncate">
+                        {selectedFile.name}
+                      </p>
+                      <span className="text-[11px] font-mono text-emerald-700">
+                        {selectedFile.size} · Active
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveFile}
+                    className="px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Disconnect repository"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Disconnect</span>
+                  </button>
+                </div>
+              )}
               <Input
                 value={githubUrl}
                 onChange={(e) => setGithubUrl(e.target.value)}
@@ -274,10 +331,20 @@ export const ProjectScanner: React.FC = () => {
                 Connect Repository
               </Button>
 
-              {githubStatus && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2.5 text-emerald-800 text-xs">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span className="font-mono text-[11px]">{githubStatus}</span>
+              {githubResult && (
+                <div
+                  className={`p-3 rounded-lg flex items-center gap-2.5 text-xs ${
+                    githubResult.success
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                  }`}
+                >
+                  {githubResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
+                  )}
+                  <span className="font-mono text-[11px]">{githubResult.message}</span>
                 </div>
               )}
             </div>

@@ -10,8 +10,10 @@ from typing import Any, Dict, List, Optional
 
 from dbscope.dependencies.extractor import DependencyExtractor
 from dbscope.dependencies.graph_builder import GraphBuilder
+from dbscope.impact.service import ImpactAnalysisService
 from dbscope.metadata.service import PostgresMetadataService
 from dbscope.migration_parser import parse_migration
+from dbscope.risk.service import RiskAssessmentService
 from dbscope.source.connector import (
     cleanup_source_dir,
     fetch_github_repository,
@@ -264,7 +266,19 @@ class UnifiedAnalysisService:
                 data_type=db_ver.get("data_type"),
             )
 
-            # Step 9: Potential impact assessment
+            # Step 9: Formal Impact & Risk Assessment
+            impact_service = ImpactAnalysisService(default_source_dir=target_source)
+            impact_report = impact_service.compute_impact(
+                parsed_migration=parsed_info["parsed"] if parsed_info else None,
+                changed_object=target_object,
+                dependencies=dependencies,
+                graph=graph,
+                data_type=db_ver.get("data_type"),
+            )
+
+            risk_service = RiskAssessmentService(default_source_dir=target_source)
+            risk_assessment = risk_service.assess_risk(impact_report)
+
             orm_deps = [d for d in dependencies if d.get("type") in ("orm_model", "ORM_MODEL")]
             schema_deps = [d for d in dependencies if d.get("type") in ("pydantic_schema", "PYDANTIC_SCHEMA")]
             route_deps = [d for d in dependencies if d.get("type") in ("fastapi_route", "FASTAPI_ROUTE")]
@@ -315,6 +329,10 @@ class UnifiedAnalysisService:
                 "summary": summary,
                 "affected_count": len(dependencies),
                 "updates": updates,
+                "risk_score": risk_assessment.get("risk_score"),
+                "risk_level": risk_assessment.get("risk_level"),
+                "recommended_action": risk_assessment.get("recommended_action"),
+                "reasons": risk_assessment.get("reasons", []),
             }
 
             return {
@@ -328,6 +346,7 @@ class UnifiedAnalysisService:
                 "potential_impact": potential_impact,
                 "graph": graph,
                 "is_live_db": db_ver.get("is_live_db", False),
+                "risk_assessment": risk_assessment,
             }
 
         finally:

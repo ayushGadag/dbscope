@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { Modal, Input, Button } from '../components/ui';
 import { scannerService } from '../services/scannerService';
+import { migrationService } from '../services/migrationService';
+import { checkBackendHealth, type BackendHealth } from '../services/api';
+import type { UnifiedAnalysisResult } from '../types';
 
 interface NavItem {
   name: string;
@@ -65,24 +68,61 @@ export const DashboardLayout: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
+  const [backendHealth, setBackendHealth] = useState<BackendHealth>({ healthy: false });
+  const [activeSource, setActiveSource] = useState<{ name: string; size: string } | null>(() => scannerService.getActiveSource());
+  const [activeTarget, setActiveTarget] = useState<string>(() => migrationService.getLastTargetObject());
+  const [lastAnalysis, setLastAnalysis] = useState<UnifiedAnalysisResult | null>(() => migrationService.getLastAnalysis());
+
+  React.useEffect(() => {
+    setActiveSource(scannerService.getActiveSource());
+    setActiveTarget(migrationService.getLastTargetObject());
+    setLastAnalysis(migrationService.getLastAnalysis());
+  }, [location.pathname]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function pollHealth() {
+      const status = await checkBackendHealth();
+      if (isMounted) {
+        setBackendHealth(status);
+        setActiveSource(scannerService.getActiveSource());
+        setActiveTarget(migrationService.getLastTargetObject());
+        setLastAnalysis(migrationService.getLastAnalysis());
+      }
+    }
+    pollHealth();
+    const interval = setInterval(pollHealth, 8000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Dynamic Page Meta for Hero Section
   const getPageMeta = () => {
     const p = location.pathname;
+    const currentScore = lastAnalysis?.risk_assessment?.risk_score ?? lastAnalysis?.potential_impact?.risk_score;
+    const scoreDisp = typeof currentScore === 'number' ? `${currentScore.toFixed(1)} / 10` : (lastAnalysis ? (lastAnalysis.potential_impact.severity === 'High' ? '8.0 / 10' : '1.5 / 10') : 'No Run');
+    const riskLvl = lastAnalysis?.risk_assessment?.risk_level || (lastAnalysis?.potential_impact?.severity ? lastAnalysis.potential_impact.severity.toUpperCase() : 'PENDING');
+    const isHighOrCrit = riskLvl === 'CRITICAL' || riskLvl === 'HIGH';
+    const depCount = lastAnalysis?.application_dependencies?.length ?? 0;
+    const repoLabel = activeSource?.name || 'sample_app';
+
     if (p === '/') {
       return {
         title: 'Overview',
         subtitle: 'Production database schema changes & AST impact telemetry',
-        kpi1: { label: 'Active Target', value: 'users.email', icon: 'database', color: '#10b981' },
-        kpi2: { label: 'Risk Gate Score', value: '8.0 / 10', icon: 'shield', color: '#ef4444' },
-        kpi3: { label: 'Blast Radius', value: '6 Nodes · 4 Tiers', icon: 'network', color: '#f59e0b' },
+        kpi1: { label: 'Active Target', value: activeTarget, icon: 'database', color: '#10b981' },
+        kpi2: { label: 'Risk Gate Score', value: scoreDisp, icon: 'shield', color: isHighOrCrit ? '#ef4444' : '#10b981' },
+        kpi3: { label: 'Blast Radius', value: `${depCount} Components`, icon: 'network', color: '#f59e0b' },
       };
     }
     if (p === '/projects') {
       return {
         title: 'Projects & Workspaces',
         subtitle: 'Registered codebases, database targets, and GitHub repositories',
-        kpi1: { label: 'Active Projects', value: '3 Ready', icon: 'folder', color: '#10b981' },
-        kpi2: { label: 'Git Sync', value: 'Clean', icon: 'git', color: '#0ea5e9' },
+        kpi1: { label: 'Active Workspace', value: repoLabel, icon: 'folder', color: '#10b981' },
+        kpi2: { label: 'Git Sync', value: activeSource ? 'Active Source' : 'Clean (sample_app)', icon: 'git', color: '#0ea5e9' },
         kpi3: { label: 'Postgres Host', value: 'Port 5432', icon: 'database', color: '#f59e0b' },
       };
     }
@@ -90,71 +130,73 @@ export const DashboardLayout: React.FC = () => {
       return {
         title: 'Project Scanner',
         subtitle: 'Inspect SQLAlchemy models, Pydantic schemas, and FastAPI route handlers',
-        kpi1: { label: 'Parsed Files', value: '48 Modules', icon: 'code', color: '#10b981' },
-        kpi2: { label: 'ORM Entities', value: '12 Models', icon: 'layers', color: '#0ea5e9' },
-        kpi3: { label: 'Public Routes', value: '26 Endpoints', icon: 'globe', color: '#f59e0b' },
+        kpi1: { label: 'Active Source', value: repoLabel, icon: 'code', color: '#10b981' },
+        kpi2: { label: 'Python Modules', value: activeSource?.size || 'Default Workspace', icon: 'layers', color: '#0ea5e9' },
+        kpi3: { label: 'Parser Mode', value: 'AST Static (Zero-Run)', icon: 'globe', color: '#10b981' },
       };
     }
     if (p === '/analyze') {
       return {
         title: 'Analyze DDL Change',
         subtitle: 'Simulate PostgreSQL schema alterations before pushing migrations',
-        kpi1: { label: 'AST Engine', value: 'v2.1 Deterministic', icon: 'cpu', color: '#10b981' },
-        kpi2: { label: 'Parser Syntax', value: 'ANSI/Postgres', icon: 'code', color: '#0ea5e9' },
-        kpi3: { label: 'Simulation Mode', value: 'Zero-Lock Dry Run', icon: 'shield', color: '#f59e0b' },
+        kpi1: { label: 'Target Column', value: activeTarget, icon: 'cpu', color: '#10b981' },
+        kpi2: { label: 'Operation', value: lastAnalysis?.migration?.operation || 'ANSI DDL', icon: 'code', color: '#0ea5e9' },
+        kpi3: { label: 'Risk Level', value: riskLvl, icon: 'shield', color: isHighOrCrit ? '#ef4444' : '#10b981' },
       };
     }
     if (p === '/graph') {
+      const nodeCount = lastAnalysis?.graph?.nodes?.length ?? (depCount > 0 ? depCount + 3 : 0);
+      const edgeCount = lastAnalysis?.graph?.edges?.length ?? (depCount > 0 ? depCount + 2 : 0);
       return {
         title: 'Lineage Graph',
         subtitle: 'Multi-tiered dependency tracing across SQL, ORM, schemas, and routes',
-        kpi1: { label: 'Graph Nodes', value: '42 Total', icon: 'network', color: '#10b981' },
-        kpi2: { label: 'Max Depth', value: '4 Tiers', icon: 'layers', color: '#0ea5e9' },
-        kpi3: { label: 'Circular Refs', value: '0 Clean', icon: 'shield', color: '#10b981' },
+        kpi1: { label: 'Graph Nodes', value: `${nodeCount} Nodes`, icon: 'network', color: '#10b981' },
+        kpi2: { label: 'Directed Edges', value: `${edgeCount} Edges`, icon: 'layers', color: '#0ea5e9' },
+        kpi3: { label: 'Root Target', value: activeTarget, icon: 'shield', color: '#10b981' },
       };
     }
     if (p === '/impact') {
       return {
         title: 'Impact Matrix',
         subtitle: 'Downstream affected consumer mapping with blast radius severity',
-        kpi1: { label: 'Vulnerable Routes', value: '4 Endpoints', icon: 'alert', color: '#ef4444' },
-        kpi2: { label: 'Schema Drift', value: '1 Detected', icon: 'layers', color: '#f59e0b' },
-        kpi3: { label: 'Blast Penetration', value: '4 Tiers Max', icon: 'flame', color: '#ef4444' },
+        kpi1: { label: 'Affected Components', value: `${depCount} Total`, icon: 'alert', color: depCount > 0 ? '#ef4444' : '#10b981' },
+        kpi2: { label: 'Severity Level', value: lastAnalysis?.potential_impact?.severity || 'Ready', icon: 'layers', color: isHighOrCrit ? '#ef4444' : '#10b981' },
+        kpi3: { label: 'Impact Target', value: activeTarget, icon: 'flame', color: '#f59e0b' },
       };
     }
     if (p === '/risk') {
       return {
         title: 'Risk Cockpit',
         subtitle: 'Safety score evaluation, locking impact, and runtime vulnerability rating',
-        kpi1: { label: 'Overall Risk Score', value: '8.0 / 10', icon: 'shield', color: '#ef4444' },
-        kpi2: { label: 'Access Lock', value: 'EXCLUSIVE', icon: 'lock', color: '#f59e0b' },
-        kpi3: { label: 'Est. Downtime', value: 'High Risk', icon: 'clock', color: '#ef4444' },
+        kpi1: { label: 'Overall Risk Score', value: scoreDisp, icon: 'shield', color: isHighOrCrit ? '#ef4444' : '#10b981' },
+        kpi2: { label: 'Risk Verdict', value: riskLvl, icon: 'lock', color: isHighOrCrit ? '#ef4444' : '#10b981' },
+        kpi3: { label: 'Recommended Action', value: lastAnalysis?.risk_assessment?.recommended_action || (isHighOrCrit ? 'REVIEW' : 'ALLOW'), icon: 'clock', color: isHighOrCrit ? '#ef4444' : '#10b981' },
       };
     }
     if (p === '/plan') {
       return {
         title: 'Zero-Downtime Migration Plan',
         subtitle: 'Actionable 4-phase rollout playbook for safe backward-compatible deployments',
-        kpi1: { label: 'Rollout Phases', value: '4 Structured', icon: 'check', color: '#10b981' },
-        kpi2: { label: 'Dual-Write State', value: 'Phase 2 Required', icon: 'code', color: '#f59e0b' },
-        kpi3: { label: 'Rollback Safety', value: 'Automated Script', icon: 'shield', color: '#10b981' },
+        kpi1: { label: 'Rollout Target', value: activeTarget, icon: 'check', color: '#10b981' },
+        kpi2: { label: 'Operation', value: lastAnalysis?.migration?.operation || 'DDL Migration', icon: 'code', color: '#f59e0b' },
+        kpi3: { label: 'Rollback Safety', value: 'Pre-Computed DDL', icon: 'shield', color: '#10b981' },
       };
     }
     if (p === '/reports') {
       return {
         title: 'Audit Reports',
         subtitle: 'Historical schema change records, compliance telemetry, and exportable artifacts',
-        kpi1: { label: 'Total Audits', value: '7 Recorded', icon: 'file', color: '#10b981' },
+        kpi1: { label: 'Active Target', value: activeTarget, icon: 'file', color: '#10b981' },
         kpi2: { label: 'Export Formats', value: 'JSON / PDF / SQL', icon: 'download', color: '#0ea5e9' },
-        kpi3: { label: 'Compliance Status', value: 'SOC-2 Ready', icon: 'check', color: '#10b981' },
+        kpi3: { label: 'Audit Compliance', value: 'AST Grounded', icon: 'check', color: '#10b981' },
       };
     }
     return {
-      title: 'DBscope Platform',
+      title: 'DBScope Platform',
       subtitle: 'Deterministic database change intelligence',
       kpi1: { label: 'Status', value: 'Operational', icon: 'check', color: '#10b981' },
-      kpi2: { label: 'Target DB', value: 'PostgreSQL 16', icon: 'database', color: '#0ea5e9' },
-      kpi3: { label: 'Engine', value: 'v2.1 Deterministic', icon: 'cpu', color: '#10b981' },
+      kpi2: { label: 'Target DB', value: 'PostgreSQL', icon: 'database', color: '#0ea5e9' },
+      kpi3: { label: 'Active Target', value: activeTarget, icon: 'shield', color: '#10b981' },
     };
   };
 
@@ -179,7 +221,7 @@ export const DashboardLayout: React.FC = () => {
       {/* 1. SIGNATURE GREENISH CANOPY (Top Header + Horizontal Nav + Hero Display) */}
       {/* ========================================================================= */}
       <div className="p-3 sm:p-4">
-        <header className="canopy-container px-6 sm:px-10 pt-6 pb-8 sm:pb-10 relative overflow-hidden shadow-xl">
+        <header className="canopy-container px-4 sm:px-6 xl:px-8 pt-5 pb-8 sm:pb-10 relative overflow-hidden shadow-xl">
           
           {/* Subtle Ambient Light Gradients (Greenish aesthetic) */}
           <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none" />
@@ -187,13 +229,14 @@ export const DashboardLayout: React.FC = () => {
           <div className="absolute -bottom-10 right-1/4 w-80 h-80 rounded-full bg-amber-400/10 blur-2xl pointer-events-none" />
 
           {/* Top Bar: Brand, Horizontal Navigation Links, Search, Notifications, Avatar */}
-          <div className="flex items-center justify-between gap-3 xl:gap-4 relative z-10 border-b border-white/10 pb-5">
+          <div className="flex items-center justify-between gap-2 lg:gap-3 xl:gap-4 relative z-10 border-b border-white/10 pb-4 sm:pb-5">
             
             {/* Left: Brand Logo & Workspace */}
-            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="lg:hidden p-2 rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors cursor-pointer"
+                aria-label="Toggle Navigation Menu"
               >
                 {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
               </button>
@@ -207,14 +250,29 @@ export const DashboardLayout: React.FC = () => {
                 </span>
               </NavLink>
 
-              <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 text-[11px] font-medium text-emerald-200 border border-white/15 backdrop-blur-md">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{scannerService.getActiveDbConfig().database || 'fastapi_demo'}:{scannerService.getActiveDbConfig().port || 5432}</span>
-              </span>
+              {/* Compact Live Dot on XL */}
+              <div
+                className="hidden xl:inline-flex 2xl:hidden items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10.5px] font-medium text-emerald-200 cursor-default"
+                title={`FastAPI Backend: ${backendHealth.healthy ? 'Connected v' + (backendHealth.version || '0.3.0') : 'Offline'}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${backendHealth.healthy ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span>Live</span>
+              </div>
+
+              {/* Live Backend & DB Status Badge (Compact & Unified on 2xl+, so it never crowds navbar on laptop/desktop) */}
+              <div
+                className="hidden 2xl:inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 backdrop-blur-md text-[11px] font-medium text-emerald-200 transition-colors shadow-sm cursor-default"
+                title={`Backend: ${backendHealth.healthy ? 'FastAPI Connected (v' + (backendHealth.version || '0.3.0') : 'Offline'} • Database: ${scannerService.getActiveDbConfig().database || 'fastapi_demo'}:${scannerService.getActiveDbConfig().port || 5432}`}
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${backendHealth.healthy ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span className="font-mono text-[11px] text-white/90">{scannerService.getActiveDbConfig().database || 'fastapi_demo'}</span>
+                <span className="text-white/30 text-[10px]">•</span>
+                <span className="text-emerald-300 font-semibold">{backendHealth.healthy ? `FastAPI v${backendHealth.version || '0.3'}` : 'Offline'}</span>
+              </div>
             </div>
 
-            {/* Center: Horizontal Navigation Links (Signature Reference Style!) */}
-            <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 bg-white/10 p-1 xl:p-1.5 rounded-full border border-white/15 backdrop-blur-md shrink min-w-0">
+            {/* Center: Horizontal Navigation Links (Sleek Glassmorphic Pill) */}
+            <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 bg-white/12 p-1 rounded-full border border-white/20 backdrop-blur-md shadow-inner shrink-0 overflow-x-auto no-scrollbar max-w-full">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
@@ -223,13 +281,13 @@ export const DashboardLayout: React.FC = () => {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-1 xl:gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
+                    className={`flex items-center gap-1 xl:gap-1.5 px-2 xl:px-2.5 py-1 rounded-full text-[11px] xl:text-xs font-medium transition-all shrink-0 whitespace-nowrap ${
                       isActive
-                        ? 'bg-white text-[#122119] font-bold shadow-sm'
+                        ? 'bg-white text-emerald-950 font-bold shadow-sm'
                         : 'text-white/80 hover:text-white hover:bg-white/10'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-[#1c4e35]' : 'text-white/70'}`} />
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-emerald-800' : 'text-white/70'}`} />
                     <span>{item.shortName}</span>
                   </NavLink>
                 );
@@ -243,10 +301,10 @@ export const DashboardLayout: React.FC = () => {
               <div className="relative shrink-0">
                 <button
                   onClick={() => setNotificationOpen(!notificationOpen)}
-                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center text-white backdrop-blur-md transition-colors cursor-pointer shrink-0"
+                  className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center text-white backdrop-blur-md transition-colors cursor-pointer shrink-0"
                   title="Notifications"
                 >
-                  <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <Bell className="w-3.5 h-3.5" />
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#f6b93b] ring-2 ring-[#163f2c]" />
                 </button>
 
@@ -270,25 +328,25 @@ export const DashboardLayout: React.FC = () => {
                 )}
               </div>
 
-              {/* Pill Search */}
-              <div className="relative hidden sm:block shrink-0">
-                <Search className="w-3.5 h-3.5 text-white/60 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {/* Pill Search (Desktop Full Input) */}
+              <div className="relative hidden xl:block shrink-0">
+                <Search className="w-3.5 h-3.5 text-white/60 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   onClick={() => setSearchModalOpen(true)}
                   readOnly
                   placeholder="Search schema..."
-                  className="w-32 lg:w-36 xl:w-48 pl-8.5 pr-8 py-1.5 rounded-full bg-white/15 hover:bg-white/20 border border-white/20 text-xs text-white placeholder-white/60 backdrop-blur-md cursor-pointer focus:outline-none transition-colors"
+                  className="w-28 xl:w-36 2xl:w-44 pl-7.5 pr-7 py-1 rounded-full bg-white/15 hover:bg-white/20 border border-white/20 text-xs text-white placeholder-white/60 backdrop-blur-md cursor-pointer focus:outline-none transition-colors"
                 />
-                <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] font-mono text-white/70 bg-white/15 px-1.5 py-0.5 rounded-full pointer-events-none">
+                <kbd className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-white/70 bg-white/15 px-1.5 py-0.5 rounded-full pointer-events-none">
                   ⌘K
                 </kbd>
               </div>
 
-              {/* Mobile / Compact Search Icon Button */}
+              {/* Search Icon Button (Tablets / Compact Desktop / Mobile) */}
               <button
                 onClick={() => setSearchModalOpen(true)}
-                className="sm:hidden w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center text-white backdrop-blur-md transition-colors cursor-pointer shrink-0"
+                className="xl:hidden w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center text-white backdrop-blur-md transition-colors cursor-pointer shrink-0"
                 title="Search schema"
               >
                 <Search className="w-3.5 h-3.5" />
@@ -297,7 +355,7 @@ export const DashboardLayout: React.FC = () => {
               {/* User Avatar Circle */}
               <button
                 onClick={() => setLoginModalOpen(true)}
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-slate-900 font-bold text-xs flex items-center justify-center shadow-md hover:scale-105 transition-transform cursor-pointer border-2 border-emerald-300 shrink-0"
+                className="w-8 h-8 rounded-full bg-white text-slate-900 font-bold text-xs flex items-center justify-center shadow-md hover:scale-105 transition-transform cursor-pointer border-2 border-emerald-300 shrink-0"
                 title="Account Settings"
               >
                 {currentUser ? currentUser.name.slice(0, 2).toUpperCase() : 'JD'}

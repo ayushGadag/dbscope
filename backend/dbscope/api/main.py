@@ -37,6 +37,20 @@ app.include_router(risk_router)
 app.include_router(source_router)
 
 
+@app.get("/", tags=["Root"])
+def root():
+    """Root endpoint providing service information and helpful navigation links."""
+    return {
+        "service": "DBScope Backend API",
+        "status": "running",
+        "version": "0.3.0",
+        "frontend_ui": "http://localhost:5173",
+        "interactive_docs": "/docs",
+        "health": "/api/health",
+        "message": "DBScope Backend is active. Open http://localhost:5173 in your browser to access the full DBScope Web Application, or visit /docs for interactive Swagger API testing.",
+    }
+
+
 @app.get("/api/health", tags=["Health"])
 def health_check():
     """Health check endpoint to verify backend service status."""
@@ -45,3 +59,4 @@ def health_check():
         "service": "dbscope-api",
         "version": "0.3.0",
     }
+

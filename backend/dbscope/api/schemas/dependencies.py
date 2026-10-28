@@ -133,3 +133,4 @@ class UnifiedAnalysisResponse(BaseModel):
     potential_impact: Dict[str, Any]
     graph: DependencyGraphResponse
     is_live_db: bool = False
+    risk_assessment: Optional[Dict[str, Any]] = None

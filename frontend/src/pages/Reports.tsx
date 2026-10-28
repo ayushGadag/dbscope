@@ -32,12 +32,12 @@ export const Reports: React.FC = () => {
       {/* Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-700">Audit Repository:</span>
+          <span className="text-xs font-semibold text-slate-700">Audit History:</span>
           <span className="text-xs font-mono px-3 py-1 bg-white border border-[#e2e7e2] text-slate-900 rounded-full shadow-2xs font-semibold">
-            {reports.length} Records Verified
+            {reports.length} Runs Recorded
           </span>
           <span className="text-[11px] text-slate-500 hidden sm:inline">
-            SOC-2 Compliance Telemetry
+            Client-Side Browser Storage (localStorage)
           </span>
         </div>
 
@@ -151,26 +151,30 @@ export const Reports: React.FC = () => {
                 Executive Finding
               </span>
               <p className="text-slate-800 leading-relaxed">
-                DDL statement <code className="font-mono bg-white px-1.5 py-0.5 border border-gray-200 rounded text-slate-900">{selectedReport.proposedMigration}</code> evaluated against active FastAPI routes and SQLAlchemy models. Confirmed breaking change without client deprecation.
+                DDL statement <code className="font-mono bg-white px-1.5 py-0.5 border border-gray-200 rounded text-slate-900">{selectedReport.proposedMigration}</code> evaluated against active FastAPI routes and SQLAlchemy models. {selectedReport.riskLevel === 'LOW' ? 'Safe schema change with minimal blast radius.' : 'Confirmed breaking change or elevated risk without client deprecation.'}
               </p>
             </div>
 
             <div className="space-y-2">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block font-mono">
-                Lineage Chain Trace
+                Evaluation Context
               </span>
-              <ul className="space-y-2 font-mono text-[11px] text-slate-700 pl-3 border-l-2 border-slate-300">
-                <li>• PostgreSQL: Column <span className="font-semibold text-slate-900">users.email</span></li>
-                <li>• SQLAlchemy: <span className="font-semibold text-slate-900">User.email</span> (models.py:17)</li>
-                <li>• Pydantic: <span className="font-semibold text-slate-900">UserResponse.email</span> (schemas.py:12)</li>
-                <li>• FastAPI: <span className="font-semibold text-slate-900">GET /users/{'{id}'}</span> (routes.py:12)</li>
-              </ul>
+              <div className="p-3 bg-gray-50 border border-gray-200/80 rounded-xl space-y-1.5 font-mono text-[11px] text-slate-700">
+                <div>• Target SQL: <span className="font-semibold text-slate-900">{selectedReport.proposedMigration}</span></div>
+                <div>• Lineage Depth: <span className="font-semibold text-slate-900">{selectedReport.dependenciesCount} references</span></div>
+                <div>• Risk Classification: <span className="font-semibold text-slate-900">{selectedReport.riskLevel}</span></div>
+                <div>• Migration Steps: <span className="font-semibold text-slate-900">{selectedReport.planStepsCount || 9} tasks</span></div>
+              </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900">
-              <span className="font-semibold block">Policy Verdict: REJECTED FOR DIRECT RUN</span>
-              <p className="text-[11px] mt-0.5 text-rose-800">
-                Engineering policy requires zero-downtime deprecation sequencing before dropping columns with active client references.
+            <div className={`p-3 rounded-xl border ${selectedReport.riskLevel === 'LOW' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+              <span className="font-semibold block">
+                Policy Verdict: {selectedReport.riskLevel === 'LOW' ? 'APPROVED FOR PIPELINE EXECUTION' : 'REJECTED FOR DIRECT RUN'}
+              </span>
+              <p className="text-[11px] mt-0.5">
+                {selectedReport.riskLevel === 'LOW' 
+                  ? 'The proposed change introduces no breaking dependencies and complies with automated deployment gates.' 
+                  : 'Engineering policy requires zero-downtime deprecation sequencing before executing changes with active code references.'}
               </p>
             </div>
           </div>
